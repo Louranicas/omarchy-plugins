@@ -1,4 +1,4 @@
-//! Actual Unix source disconnects; simulated compositor data, no modal authority.
+//! Real source/Host/data IPC recovery; compositor data and presenter lifecycle are simulated.
 use desktop_io::Endpoint;
 use std::{
     io::{Read, Write},
