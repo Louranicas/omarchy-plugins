@@ -2,7 +2,7 @@
 
 ## Current integration checkpoint — 2026-10-04
 
-`tools/check.sh --native --offline` passed all **12 commands** on the integrated provider/input checkpoint: **532 passing test executions, zero failures, two ignored entries**, with formatting and all-target strict Clippy clean. The 187 tracked non-Markdown inputs were unchanged during the run. Counts include overlapping workspaces and are not unique-test totals. The ignored peer-child entry is exercised by its parent tests; authenticated Agentd vendor capture remains unqualified.
+`tools/check.sh --native --offline` passed all **12 commands** on the integrated provider/input checkpoint after the Agentd CI fixture correction: **535 passing test executions, zero failures, two ignored entries**, with formatting and all-target strict Clippy clean. The 187 tracked non-Markdown inputs were unchanged during the run. Counts include overlapping workspaces and are not unique-test totals. The ignored peer-child entry is exercised by its parent tests; authenticated Agentd vendor capture remains unqualified.
 
 Four standard compiled semantic mutation controls passed their baselines and failed at the intended assertions. Additional lane-specific mutations and independent checks are described in the [integration report](docs/INTEGRATION-2026-10-04.md). Independent private-GTK tests verified Ask admission with local sentinels; isolated Hyprland diagnostic counters verified matched key edges. Neither substitutes for complete installed native/provider acceptance.
 

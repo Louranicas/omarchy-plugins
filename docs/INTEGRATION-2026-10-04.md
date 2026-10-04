@@ -34,7 +34,15 @@ Review tightened the disappearance assertion so an environment where every fixtu
 
 ## Combined verification
 
-The integrated source passed `tools/check.sh --native --offline`: 12 commands, 532 passing test executions, zero failures and two ignored entries, with formatting and strict Clippy clean. Tracked non-Markdown inputs stayed unchanged. Counts overlap across workspaces. Four standard compiled semantic controls also passed their baselines and detected their intended mutations. Independent lane checks are bounded as described above; the pending authenticated vendor fixture is not reclassified.
+The integrated source passed `tools/check.sh --native --offline`: 12 commands, 535 passing test executions, zero failures and two ignored entries, with formatting and strict Clippy clean. Tracked non-Markdown inputs stayed unchanged. Counts overlap across workspaces. Four standard compiled semantic controls also passed their baselines and detected their intended mutations. Independent lane checks are bounded as described above; the pending authenticated vendor fixture is not reclassified.
+
+## Agentd CI fixture correction
+
+The first hosted run at `4ea0ff7` failed the existing flood test because it observed no admitted clients. A client connecting to a kernel socket backlog does not prove daemon admission. Local controls reproduced early observation before worker creation; a separate low-file-descriptor control demonstrated that the former fixture could also conceal an actual daemon exit. The exact mechanism of the historical hosted failure remains unproven.
+
+The corrective change is confined to the integration-test harness. It retains child cleanup custody before startup assertions, captures private bounded diagnostic reads, verifies daemon liveness and an actual startup response, and waits for a named admitted worker before admission-dependent assertions. Startup reads share an absolute deadline. Flood limits and production timeouts are unchanged. Shutdown is checked with a freshly admitted incomplete request and must close without a normal request-expiry error frame. Regression cases cover delayed admission, assertion/startup cleanup, and byte-drip deadlines; delayed resume uses a retained pidfd.
+
+The package gate passed 88 tests with one ignored entry. Independent review passed all 18 integration tests. Three compiled semantic controls across owner and independent checks detected missing shutdown cancellation, unconditional admission, and removed worker-cap enforcement. The final combined local gate passed 535 executions with two ignored entries. These controls do not establish a global mutation score. The low-file-descriptor production behavior remains a separate follow-up, and hosted CI requires its own successful run.
 
 ## Remaining integration order
 
