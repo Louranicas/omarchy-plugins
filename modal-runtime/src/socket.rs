@@ -164,6 +164,36 @@ impl Connection {
     pub(crate) fn try_write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.stream.write(bytes)
     }
+    /// Nonblocking, nonconsuming readiness hint for an event-loop owner.
+    ///
+    /// `true` includes closure/error readiness: call `read_frame` with a bounded
+    /// absolute deadline to resolve it. It does not promise a complete frame or
+    /// authenticate the peer's current process identity. Idle input is `false`,
+    /// never an implicit release or a reason to restart an existing frame budget.
+    pub fn read_ready(&mut self) -> io::Result<bool> {
+        if self.failed {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "connection failed",
+            ));
+        }
+        let mut descriptor = libc::pollfd {
+            fd: self.stream.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // The stream owns this descriptor throughout the call. Zero timeout
+        // probes once; EINTR is returned instead of an unbounded retry loop.
+        let result = unsafe { libc::poll(&mut descriptor, 1, 0) };
+        if result < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if descriptor.revents & libc::POLLNVAL != 0 {
+            self.failed = true;
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "invalid socket"));
+        }
+        Ok(descriptor.revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0)
+    }
     /// Absolute deadline applies to the whole frame, including byte-drip peers.
     /// Newline framing deliberately leaves subsequent frames on the socket.
     pub fn read_frame(&mut self, deadline: Instant) -> io::Result<Vec<u8>> {
@@ -311,6 +341,62 @@ mod tests {
         drop(server);
         assert!(!dir.path().join("modal.sock").exists());
         assert!(dir.path().join("modal.lock").exists());
+    }
+    #[test]
+    fn readiness_preserves_idle_bytes_and_eof() {
+        let (mut writer, stream) = UnixStream::pair().unwrap();
+        let mut reader = Connection::from_stream(stream).unwrap();
+        for _ in 0..16 {
+            assert!(!reader.read_ready().unwrap(), "idle must not become input");
+        }
+        writer.write_all(b"first\nsecond\n").unwrap();
+        assert!(reader.read_ready().unwrap(), "queued data must be ready");
+        assert!(reader.read_ready().unwrap(), "probe must not consume data");
+        assert_eq!(
+            reader
+                .read_frame(Instant::now() + Duration::from_secs(1))
+                .unwrap(),
+            b"first"
+        );
+        assert!(reader.read_ready().unwrap());
+        assert_eq!(
+            reader
+                .read_frame(Instant::now() + Duration::from_secs(1))
+                .unwrap(),
+            b"second"
+        );
+        assert!(!reader.read_ready().unwrap());
+        writer.shutdown(std::net::Shutdown::Write).unwrap();
+        assert!(reader.read_ready().unwrap(), "EOF must not look like idle");
+        assert_eq!(
+            reader
+                .read_frame(Instant::now() + Duration::from_secs(1))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+        assert_eq!(
+            reader.read_ready().unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        );
+    }
+    #[test]
+    fn partial_readiness_does_not_extend_frame_deadline() {
+        let (mut writer, stream) = UnixStream::pair().unwrap();
+        let mut reader = Connection::from_stream(stream).unwrap();
+        writer.write_all(b"partial").unwrap();
+        assert!(reader.read_ready().unwrap());
+        assert_eq!(
+            reader
+                .read_frame(Instant::now() + Duration::from_millis(10))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::TimedOut
+        );
+        assert_eq!(
+            reader.read_ready().unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        );
     }
     #[test]
     fn unsafe_runtime_and_replaced_endpoint_are_preserved() {
