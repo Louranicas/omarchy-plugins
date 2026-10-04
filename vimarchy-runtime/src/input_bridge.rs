@@ -54,6 +54,8 @@ pub struct Gate {
     press: Option<u64>,
     last_press: u64,
     last_sent: u64,
+    // Once per admission; receipt sampling must not move equal source instants.
+    clock_anchor: Option<(u64, u64)>,
     poisoned: bool,
 }
 fn invalid() -> io::Error {
@@ -104,6 +106,7 @@ impl Gate {
             press: None,
             last_press: 0,
             last_sent: 0,
+            clock_anchor: None,
             poisoned: false,
         })
     }
@@ -149,7 +152,12 @@ impl Gate {
             .checked_sub(sent)
             .filter(|age| *age <= 40)
             .ok_or_else(invalid)?;
-        let event_ms = core_ms.checked_sub(age).ok_or_else(invalid)?;
+        let event_ms = match self.clock_anchor {
+            Some((source_origin, core_origin)) => core_origin
+                .checked_add(sent.checked_sub(source_origin).ok_or_else(invalid)?)
+                .ok_or_else(invalid)?,
+            None => core_ms.checked_sub(age).ok_or_else(invalid)?,
+        };
         if frame.version != 1
             || frame.auth != self.auth
             || frame.bridge_epoch != self.epoch
@@ -166,6 +174,7 @@ impl Gate {
         let event = match frame.edge {
             Edge::Ready { held } if !self.ready && self.sequence == 1 => {
                 self.ready = true;
+                self.clock_anchor = Some((sent, event_ms));
                 self.held = held;
                 None
             }
@@ -192,7 +201,12 @@ impl Gate {
             _ => return Err(invalid()),
         };
         session
-            .input(self.context, event.unwrap_or(Event::Tick), event_ms)
+            .input_at(
+                self.context,
+                event.unwrap_or(Event::Tick),
+                event_ms,
+                core_ms,
+            )
             .map(Some)
             .map_err(|_| invalid())
     }
@@ -470,6 +484,117 @@ mod tests {
                     .is_err()
             );
         }
+    }
+    #[test]
+    fn queued_same_source_time_edges_survive_later_batch_consumption() {
+        let (mut gate, mut session) = fixture();
+        send(&mut gate, &mut session, 1, 2, Edge::Ready { held: false });
+        let down = frame(&gate, 2, 10, Edge::Down);
+        let batch = gate.route(&down, &mut session, 12, 12).unwrap().unwrap();
+        session.consume_batch(batch, 13).unwrap();
+        let up = frame(&gate, 3, 10, Edge::Up);
+        let batch = gate.route(&up, &mut session, 14, 14).unwrap().unwrap();
+        let effects = session.consume_batch(batch, 15).unwrap();
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|e| matches!(e, Effect::Focus(_)))
+                .count(),
+            1
+        );
+    }
+    #[test]
+    fn equal_source_timestamps_do_not_reverse_under_receipt_sampling_jitter() {
+        let (mut gate, mut session) = fixture();
+        send(&mut gate, &mut session, 1, 2, Edge::Ready { held: false });
+        let down = frame(&gate, 2, 10, Edge::Down);
+        let batch = gate.route(&down, &mut session, 12, 12).unwrap().unwrap();
+        session.consume_batch(batch, 13).unwrap();
+        let up = frame(&gate, 3, 10, Edge::Up);
+        let batch = gate.route(&up, &mut session, 15, 14).unwrap().unwrap();
+        assert_eq!(
+            session
+                .consume_batch(batch, 15)
+                .unwrap()
+                .iter()
+                .filter(|e| matches!(e, Effect::Focus(_)))
+                .count(),
+            1
+        );
+    }
+    #[test]
+    fn separate_clocks_preserve_expiry_order_and_pending_revocation() {
+        for case in 0..5 {
+            let (mut gate, mut session) = fixture();
+            send(&mut gate, &mut session, 1, 2, Edge::Ready { held: false });
+            let down = frame(&gate, 2, 10, Edge::Down);
+            let pending = gate.route(&down, &mut session, 12, 12).unwrap().unwrap();
+            if case == 0 {
+                assert!(session.consume_batch(pending, 1000).is_err());
+                assert!(!session.is_valid());
+                continue;
+            }
+            session.consume_batch(pending, 13).unwrap();
+            let superseding = if case == 3 {
+                Some(session.input(gate.context, Event::Tick, 20).unwrap())
+            } else if case == 4 {
+                Some(session.host_ready(gate.context, 20).unwrap())
+            } else {
+                None
+            };
+            let (source, receipt) = match case {
+                1 => (11, 12),
+                2 => (9, 14),
+                _ => (15, 21),
+            };
+            let up = frame(&gate, 3, source, Edge::Up);
+            assert!(
+                gate.route(&up, &mut session, receipt, receipt).is_err(),
+                "case {case}"
+            );
+            assert!(!session.is_valid());
+            if let Some(batch) = superseding {
+                assert!(session.consume_batch(batch, 22).is_err());
+            }
+        }
+    }
+    #[test]
+    fn suspend_clock_divergence_revokes_unconsumed_batch_without_rebase() {
+        let (mut gate, mut session) = fixture();
+        send(&mut gate, &mut session, 1, 2, Edge::Ready { held: false });
+        let down = frame(&gate, 2, 10, Edge::Down);
+        let pending = gate.route(&down, &mut session, 12, 12).unwrap().unwrap();
+        // BOOTTIME and fresh source timestamp advance while authority/core time
+        // does not. The fixed origin maps this into the future; never rebase.
+        let up = frame(&gate, 3, 10_010, Edge::Up);
+        assert!(gate.route(&up, &mut session, 10_011, 13).is_err());
+        assert!(!session.is_valid());
+        assert!(session.consume_batch(pending, 14).is_err());
+        let rebased = frame(&gate, 4, 15, Edge::Up);
+        assert!(gate.route(&rebased, &mut session, 15, 15).is_err());
+    }
+    #[test]
+    fn receipt_delay_does_not_extend_source_double_tap_deadline() {
+        let (mut gate, mut session) = fixture();
+        send(&mut gate, &mut session, 1, 2, Edge::Ready { held: false });
+        let down = frame(&gate, 2, 10, Edge::Down);
+        let batch = gate.route(&down, &mut session, 40, 40).unwrap().unwrap();
+        session.consume_batch(batch, 40).unwrap();
+        let up = frame(&gate, 3, 11, Edge::Up);
+        let batch = gate.route(&up, &mut session, 41, 41).unwrap().unwrap();
+        session.consume_batch(batch, 41).unwrap();
+        let second = frame(&gate, 4, 291, Edge::Down);
+        let batch = gate
+            .route(&second, &mut session, 292, 292)
+            .unwrap()
+            .unwrap();
+        assert!(
+            !session
+                .consume_batch(batch, 292)
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, Effect::DoubleTap { .. }))
+        );
     }
     #[test]
     fn constructor_rejects_foreign_presenter_namespace() {

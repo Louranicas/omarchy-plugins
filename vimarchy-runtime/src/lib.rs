@@ -73,6 +73,21 @@ mod tests {
         session
     }
     #[test]
+    fn private_input_clock_cannot_be_in_future_or_bypass_host_only_events() {
+        let mut s = fixture();
+        s.host_ready(context(), 1).unwrap();
+        assert_eq!(
+            s.input_at(context(), gestures::Event::Tick, 3, 2)
+                .unwrap_err(),
+            Error::ClockRegression
+        );
+        assert_eq!(
+            s.input_at(context(), gestures::Event::Mapped, 2, 2)
+                .unwrap_err(),
+            Error::HostOnlyEvent
+        );
+    }
+    #[test]
     fn host_proof_is_separate_from_ui_map_and_completion() {
         let mut s = fixture();
         assert_eq!(
@@ -359,13 +374,25 @@ impl Session {
         event: gestures::Event,
         now: u64,
     ) -> Result<Batch, Error> {
+        self.input_at(context, event, now, now)
+    }
+    /// Trusted ingress only: gesture time and receipt/authority time are separate.
+    /// Receipt time must be live and monotonic; the reducer independently rejects
+    /// source time older than any prior input, Tick or host transition. No clamp.
+    pub(crate) fn input_at(
+        &mut self,
+        context: Context,
+        event: gestures::Event,
+        event_ms: u64,
+        receipt_ms: u64,
+    ) -> Result<Batch, Error> {
         if matches!(
             event,
             gestures::Event::Mapped | gestures::Event::HoldCompleted { .. }
         ) {
             return Err(Error::HostOnlyEvent);
         }
-        self.apply(context, event, now)
+        self.apply_at(context, event, event_ms, receipt_ms)
     }
     pub fn host_completed(
         &mut self,
@@ -389,7 +416,19 @@ impl Session {
         event: gestures::Event,
         now: u64,
     ) -> Result<Batch, Error> {
-        self.check(context, now)?;
+        self.apply_at(context, event, now, now)
+    }
+    fn apply_at(
+        &mut self,
+        context: Context,
+        event: gestures::Event,
+        event_ms: u64,
+        receipt_ms: u64,
+    ) -> Result<Batch, Error> {
+        self.check(context, receipt_ms)?;
+        if event_ms > receipt_ms {
+            return Err(Error::ClockRegression);
+        }
         let Some(sequence) = self.sequence.checked_add(1) else {
             self.invalidate();
             return Err(Error::SequenceExhausted);
@@ -398,7 +437,7 @@ impl Session {
             .reducer
             .apply(
                 gestures::Generation(context.fence.generation.get()),
-                now,
+                event_ms,
                 event,
             )
             .map_err(Error::Reducer)?;
