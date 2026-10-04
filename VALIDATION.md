@@ -23,3 +23,7 @@ cargo clippy --manifest-path yoohoo-ui/Cargo.toml --all-targets --locked --offli
 ```
 
 These checks cover the relocated source, fixture integrations and compiled UI tests. They do not qualify production installation, live providers, complete compositor workflows or power-loss recovery. No live service or desktop configuration was changed.
+
+## Additional native workflow investigation
+
+A later, broader candidate verification found an unexpected maximize in the interactive Vimarchy changed-target second-tap scenario. The cause is under investigation; input delivery versus implementation has not been established. The commands above remain passing evidence for their stated scopes, but do not resolve this native workflow finding. Passive-renderer evidence does not qualify interactive input behavior.
