@@ -971,6 +971,17 @@ mod authority_join {
     }
     #[test]
     fn actual_daemon_cli_status_open_close_reopen_and_quit() {
+        daemon_exercise(false, false);
+    }
+    #[test]
+    fn actual_daemon_repeated_malformed_controls_and_source_recovery() {
+        daemon_exercise(true, false);
+    }
+    #[test]
+    fn actual_daemon_active_source_loss_refuses_reopen_and_unconfirmed_quit() {
+        daemon_exercise(false, true);
+    }
+    fn daemon_exercise(adversarial: bool, active_loss: bool) {
         let fixture = Fixture::new();
         let calls = Arc::new(AtomicUsize::new(0));
         let grants = Arc::new(Mutex::new(Vec::new()));
@@ -1067,6 +1078,40 @@ mod authority_join {
         assert_eq!(after.revision, before.revision);
         assert!(!after.cleanup_confirmed);
         assert!(grants.lock().unwrap().is_empty());
+        if adversarial {
+            let mut malformed = vec![
+                b"null\n".to_vec(), b"{}\n".to_vec(), b"\n".to_vec(),
+                b"{\"version\":1,\"instance\":null,\"revision\":0,\"operation\":\"unknown\"}\n".to_vec(),
+                b"{\"version\":1,\"version\":1,\"instance\":null,\"revision\":0,\"operation\":\"status\"}\n".to_vec(),
+                b"{\"version\":1,\"instance\":null,\"revision\":0,\"operation\":\"status\",\"extra\":true}\n".to_vec(),
+                b"{\"version\":1".to_vec(),
+            ];
+            let mut oversized = vec![b' '; 4097];
+            oversized.push(b'\n');
+            malformed.push(oversized);
+            for frame in malformed {
+                let mut peer =
+                    UnixStream::connect(fixture.dir.path().join("control/modal.sock")).unwrap();
+                peer.set_write_timeout(Some(Duration::from_millis(100)))
+                    .unwrap();
+                peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+                peer.write_all(&frame).unwrap();
+                let refusal = peer.read(&mut [0]);
+                assert!(
+                    matches!(refusal, Ok(0))
+                        || matches!(refusal, Err(ref e) if e.kind() == std::io::ErrorKind::ConnectionReset),
+                    "malformed peer not refused: {refusal:?}"
+                );
+                count += 1;
+                let observed = cli(&fixture, process, "status", count);
+                assert_eq!(
+                    (observed.phase, observed.instance, observed.revision),
+                    (before.phase, before.instance, before.revision)
+                );
+                assert!(daemon.child.try_wait().unwrap().is_none());
+                assert!(grants.lock().unwrap().is_empty());
+            }
+        }
         fixture.edge(b"urgent>>0x1\n");
         count += 1;
         let opened = cli(&fixture, process, "open", count);
@@ -1098,6 +1143,121 @@ mod authority_join {
         assert_eq!(cli(&fixture, process, "open", count).phase, Phase::Active);
         let second = *grants.lock().unwrap().last().unwrap();
         assert_ne!(first, second);
+        if active_loss {
+            fixture.disconnect();
+            let end = Instant::now() + Duration::from_secs(2);
+            let fault = loop {
+                count += 1;
+                let status = cli(&fixture, process, "status", count);
+                if status.phase == Phase::Faulted {
+                    break status;
+                }
+                assert!(Instant::now() < end);
+            };
+            assert!(!fault.cleanup_confirmed);
+            let grant_count = grants.lock().unwrap().len();
+            for operation in ["open", "quit"] {
+                count += 1;
+                let status = cli(&fixture, process, "status", count);
+                let mut peer = modal_client::data::Client::connect(
+                    &fixture.dir.path().join("control/modal.sock"),
+                    process,
+                )
+                .unwrap();
+                let request = serde_json::to_vec(&serde_json::json!({"version":1,"instance":status.instance,"revision":status.revision,"operation":operation})).unwrap();
+                let response = peer
+                    .exchange(&request, Instant::now() + Duration::from_secs(1))
+                    .unwrap();
+                let refused: ControlReply = serde_json::from_slice(&response).unwrap();
+                assert!(!refused.accepted);
+                assert_eq!(refused.phase, Phase::Faulted);
+                assert!(!refused.cleanup_confirmed);
+            }
+            assert_eq!(grants.lock().unwrap().len(), grant_count);
+            assert_eq!(calls.load(Ordering::SeqCst), 0);
+            assert!(daemon.child.try_wait().unwrap().is_none());
+            // Faulted controller is deliberately not automatically restarted or
+            // reported clean; fixture custody terminates and reaps it on return.
+            return;
+        }
+        if adversarial {
+            let mut previous = second;
+            for cycle in 0..10 {
+                let auth = modal_client::presenter::Auth::new(
+                    previous,
+                    format!("omarchy-modal-{:032x}", previous.generation.get()),
+                )
+                .unwrap();
+                let mut link =
+                    Link::connect(&fixture.dir.path().join("data/modal.sock"), process, auth)
+                        .unwrap();
+                let model = link.model().unwrap();
+                assert!(
+                    link.apply(Command::Close {
+                        generation: model.view.generation
+                    })
+                    .unwrap()
+                );
+                drop(link);
+                let end = Instant::now() + Duration::from_secs(2);
+                loop {
+                    count += 1;
+                    if cli(&fixture, process, "status", count).phase == Phase::Ready {
+                        break;
+                    }
+                    assert!(Instant::now() < end);
+                }
+                let granted = grants.lock().unwrap().len();
+                fixture.mode.store(1, Ordering::Release);
+                fixture.disconnect();
+                let end = Instant::now() + Duration::from_secs(2);
+                loop {
+                    count += 1;
+                    let status = cli(&fixture, process, "status", count);
+                    assert_ne!(
+                        status.phase,
+                        Phase::Faulted,
+                        "source failed permanently cycle {cycle}"
+                    );
+                    if status.phase == Phase::Waiting {
+                        break;
+                    }
+                    assert!(Instant::now() < end);
+                }
+                fixture.mode.store(0, Ordering::Release);
+                let end = Instant::now() + Duration::from_secs(2);
+                loop {
+                    count += 1;
+                    if cli(&fixture, process, "status", count).phase == Phase::Ready {
+                        break;
+                    }
+                    assert!(Instant::now() < end);
+                }
+                assert_eq!(
+                    grants.lock().unwrap().len(),
+                    granted,
+                    "recovery auto-opened"
+                );
+                let mut peer = modal_client::data::Client::connect(
+                    &fixture.dir.path().join("control/modal.sock"),
+                    process,
+                )
+                .unwrap();
+                let stale = serde_json::to_vec(&serde_json::json!({"version":1,"instance":opened.instance,"revision":opened.revision,"operation":"open"})).unwrap();
+                let response = peer
+                    .exchange(&stale, Instant::now() + Duration::from_secs(1))
+                    .unwrap();
+                let rejected: ControlReply = serde_json::from_slice(&response).unwrap();
+                assert!(!rejected.accepted, "old Open replay accepted");
+                drop(peer);
+                fixture.edge(b"urgent>>0x1\n");
+                count += 1;
+                assert_eq!(cli(&fixture, process, "open", count).phase, Phase::Active);
+                let fresh = *grants.lock().unwrap().last().unwrap();
+                assert_ne!(previous, fresh, "old modal fence reused");
+                previous = fresh;
+            }
+        }
         count += 1;
         let quit = cli(&fixture, process, "quit", count);
         assert_eq!(quit.phase, Phase::Stopped);
