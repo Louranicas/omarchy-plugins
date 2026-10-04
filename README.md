@@ -19,14 +19,14 @@ done
 
 ## Current scope
 
-- Vimarchy: gesture/workspace core and explicitly selected passive managed renderer. Trusted compositor input routing and full native workflows remain unfinished.
-- Ask: session/permission, file, subprocess and transcript foundations. Real provider integration and full interaction coverage remain unfinished.
+- Vimarchy: gesture/workspace core, passive managed renderer and [experimental matched-input receiver](vimarchy-runtime/INPUT-BRIDGE.md). Its compositor exporter and production input routing remain unfinished.
+- Ask: session/permission, file, subprocess and transcript foundations, plus [explicit provider profiles with guarded launch](ask-native/PROVIDER-PROFILES.md). Real vendor authentication/session acceptance and full interaction coverage remain unfinished.
 - Yoohoo: attention/selection and live list refresh. Production notification attribution, persistence and reconnect handling remain unfinished.
 - Agentd: local agent registry, process identity and bounded subprocess handling. Real harness/service qualification remains unfinished.
 
 The passive Vimarchy mode is an isolated renderer checkpoint, not a production input adapter. Publishing this source neither installs nor activates services. Installer work and private desktop test infrastructure are outside this plugin snapshot.
 
-See [VALIDATION.md](VALIDATION.md) for checks on this combined checkout. Earlier plugin-specific validation is retained under docs; it is historical evidence, not a replacement for combined-checkout validation. PROVENANCE.json records source commits. Required fixtures retain their upstream provenance; private session state, raw operational evidence and credentials are excluded.
+See [the latest integration checkpoint](docs/INTEGRATION-2026-10-04.md) for reviewed changes and open boundaries, and [VALIDATION.md](VALIDATION.md) for checks on this combined checkout. Earlier plugin-specific validation is retained under docs; it is historical evidence, not a replacement for combined-checkout validation. PROVENANCE.json records source commits. Required fixtures retain their upstream provenance; private session state, raw operational evidence and credentials are excluded.
 
 ## Attribution
 
