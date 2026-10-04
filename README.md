@@ -19,9 +19,9 @@ done
 
 ## Current scope
 
-- Vimarchy: gesture/workspace core, passive managed renderer and [experimental matched-input receiver](vimarchy-runtime/INPUT-BRIDGE.md). Its compositor exporter and production input routing remain unfinished.
-- Ask: session/permission, file, subprocess and transcript foundations, plus [explicit provider profiles with guarded launch](ask-native/PROVIDER-PROFILES.md). Real vendor authentication/session acceptance and full interaction coverage remain unfinished.
-- Yoohoo: attention/selection and live list refresh. Production notification attribution, persistence and reconnect handling remain unfinished.
+- Vimarchy: gesture/workspace core, passive managed renderer and [experimental matched-input receiver](vimarchy-runtime/INPUT-BRIDGE.md). An [isolated compositor-to-receiver join](tools/native-input-join/README.md) exercises counted intents; production Host wiring and hardware input qualification remain unfinished.
+- Ask: session/permission, file, subprocess and transcript foundations, plus [explicit provider profiles with guarded launch](ask-native/PROVIDER-PROFILES.md). [Typed cleanup observations](ask-native/CLEANUP-STATUS.md) and synthetic recovery tests are available; real vendor acceptance, managed restart and full interaction coverage remain unfinished.
+- Yoohoo: attention/selection, live list refresh, bounded nonmodal source recovery and an [explicit daemon/control entrypoint](yoohoo-runtime/CONTROLLER.md). New opens acquire fresh authority; uncertain cleanup prevents reuse. Real desktop integration, notification attribution and persistence remain unfinished.
 - Agentd: local agent registry, process identity and bounded subprocess handling. Real harness/service qualification remains unfinished.
 
 The passive Vimarchy mode is an isolated renderer checkpoint, not a production input adapter. Publishing this source neither installs nor activates services. Installer work and private desktop test infrastructure are outside this plugin snapshot.
