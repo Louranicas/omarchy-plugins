@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, symlink};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
@@ -1465,7 +1466,7 @@ fn descriptor_exhaustion_fails_closed_then_fresh_process_restarts() {
     );
     // An acknowledged subscription witnesses a live usable daemon before the
     // resource fault. Keep it open until after the failed child is reaped.
-    let mut stream = UnixStream::connect(&daemon.socket).unwrap();
+    let mut stream = connect_without_waiting(&daemon.socket).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .unwrap();
@@ -1478,16 +1479,22 @@ fn descriptor_exhaustion_fails_closed_then_fresh_process_restarts() {
     let mut subscriber = BufReader::new(stream);
     let initial = read_snapshot(&mut subscriber);
     let mut clients = Vec::new();
+    let flood_deadline = Instant::now() + Duration::from_secs(3);
     for _ in 0..160 {
-        match UnixStream::connect(&daemon.socket) {
+        let Some(remaining) = flood_deadline.checked_duration_since(Instant::now()) else {
+            break;
+        };
+        match connect_without_waiting(&daemon.socket) {
             Ok(mut stream) => {
                 stream
-                    .set_write_timeout(Some(Duration::from_millis(100)))
+                    .set_write_timeout(Some(remaining.min(Duration::from_millis(100))))
                     .unwrap();
-                let _ = stream.write_all(b"{");
+                let _ = stream.write(b"{");
                 clients.push(stream);
             }
-            Err(_) => break, // The expected failing daemon can close admission.
+            // Full kernel queue or closed listener ends this finite pressure
+            // burst; connect never waits for a stalled server to accept.
+            Err(_) => break,
         }
     }
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -1519,17 +1526,14 @@ fn descriptor_exhaustion_fails_closed_then_fresh_process_restarts() {
         !daemon.socket.exists(),
         "owned socket survived descriptor exhaustion"
     );
-    let closed = read_startup_frame(
-        subscriber.into_inner(),
+    let closed = drain_to_close(
+        &mut subscriber,
         Instant::now() + Duration::from_secs(1),
-    );
-    assert!(
-        closed.is_ok()
-            || closed
-                .as_ref()
-                .is_err_and(|error| error.kind() == std::io::ErrorKind::ConnectionReset),
-        "admitted subscriber did not close: {closed:?}"
-    );
+        1024 * 1024,
+        128,
+    )
+    .expect("admitted subscriber did not reach EOF/reset");
+    assert!(matches!(closed.end, PeerEnd::Eof | PeerEnd::Reset));
     assert_eq!(fs::read(&sentinel).unwrap(), b"preserve");
     drop(clients);
     drop(daemon); // Already reaped, releases retained fixture reservation.
@@ -1551,4 +1555,189 @@ fn descriptor_exhaustion_fails_closed_then_fresh_process_restarts() {
     );
     assert_eq!(fs::read(&sentinel).unwrap(), b"preserve");
     replacement.stop();
+}
+
+// A single nonblocking AF_UNIX connect. Backlog saturation returns EAGAIN;
+// pending/error connections are dropped, never polled or retried implicitly.
+fn connect_without_waiting(path: &Path) -> std::io::Result<UnixStream> {
+    let bytes = path.as_os_str().as_bytes();
+    let mut address: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    if bytes.contains(&0) || bytes.len() >= address.sun_path.len() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "fixture socket path",
+        ));
+    }
+    address.sun_family = libc::AF_UNIX as libc::sa_family_t;
+    for (dest, byte) in address.sun_path.iter_mut().zip(bytes) {
+        *dest = *byte as libc::c_char;
+    }
+    let raw = unsafe {
+        libc::socket(
+            libc::AF_UNIX,
+            libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
+            0,
+        )
+    };
+    if raw < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let fd = unsafe { OwnedFd::from_raw_fd(raw) };
+    if unsafe {
+        libc::connect(
+            fd.as_raw_fd(),
+            (&address as *const libc::sockaddr_un).cast(),
+            std::mem::size_of_val(&address) as libc::socklen_t,
+        )
+    } != 0
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+    let stream = UnixStream::from(fd);
+    stream.set_nonblocking(false)?;
+    Ok(stream)
+}
+#[derive(Debug, PartialEq, Eq)]
+enum PeerEnd {
+    Eof,
+    Reset,
+}
+#[derive(Debug)]
+struct Drain {
+    end: PeerEnd,
+    bytes: usize,
+    frames: usize,
+}
+fn drain_to_close(
+    reader: &mut BufReader<UnixStream>,
+    deadline: Instant,
+    max_bytes: usize,
+    max_frames: usize,
+) -> std::io::Result<Drain> {
+    reader.get_ref().set_nonblocking(true)?;
+    let (mut bytes, mut frames) = (0usize, 0usize);
+    loop {
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|d| !d.is_zero())
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "subscriber closure deadline")
+            })?;
+        let mut chunk = [0u8; 4096];
+        let n = match reader.read(&mut chunk) {
+            Ok(n) => n,
+            Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => {
+                if Instant::now() >= deadline {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "subscriber closure deadline",
+                    ));
+                }
+                return Ok(Drain {
+                    end: PeerEnd::Reset,
+                    bytes,
+                    frames,
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(remaining.min(Duration::from_millis(2)));
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        if Instant::now() >= deadline {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "subscriber closure deadline",
+            ));
+        }
+        if n == 0 {
+            return Ok(Drain {
+                end: PeerEnd::Eof,
+                bytes,
+                frames,
+            });
+        }
+        bytes = bytes
+            .checked_add(n)
+            .ok_or_else(|| std::io::Error::other("drain overflow"))?;
+        frames = frames
+            .checked_add(chunk[..n].iter().filter(|b| **b == b'\n').count())
+            .ok_or_else(|| std::io::Error::other("drain overflow"))?;
+        if bytes > max_bytes || frames > max_frames {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "subscriber closure budget",
+            ));
+        }
+    }
+}
+#[test]
+fn closure_drain_requires_eof_and_counts_buffered_frames() {
+    let (reader, mut writer) = UnixStream::pair().unwrap();
+    writer.write_all(b"first\nsecond\n").unwrap();
+    let mut reader = BufReader::new(reader);
+    assert_eq!(reader.fill_buf().unwrap(), b"first\nsecond\n");
+    writer.shutdown(std::net::Shutdown::Write).unwrap();
+    let closed =
+        drain_to_close(&mut reader, Instant::now() + Duration::from_secs(1), 100, 2).unwrap();
+    assert_eq!(
+        (closed.end, closed.bytes, closed.frames),
+        (PeerEnd::Eof, 13, 2)
+    );
+    let (reader, mut writer) = UnixStream::pair().unwrap();
+    writer.write_all(b"complete-frame\n").unwrap();
+    let mut reader = BufReader::new(reader);
+    assert_eq!(
+        drain_to_close(
+            &mut reader,
+            Instant::now() + Duration::from_millis(30),
+            100,
+            2
+        )
+        .unwrap_err()
+        .kind(),
+        std::io::ErrorKind::TimedOut,
+        "complete update falsely qualified closure"
+    );
+}
+#[test]
+fn closure_drain_and_backlog_have_finite_budgets() {
+    for (bytes, frames) in [(2, 10), (100, 1)] {
+        let (reader, mut writer) = UnixStream::pair().unwrap();
+        writer.write_all(b"a\nb\n").unwrap();
+        let mut reader = BufReader::new(reader);
+        assert_eq!(
+            drain_to_close(
+                &mut reader,
+                Instant::now() + Duration::from_secs(1),
+                bytes,
+                frames
+            )
+            .unwrap_err()
+            .kind(),
+            std::io::ErrorKind::InvalidData
+        );
+    }
+    let root = TestDir::new("full-listener-backlog");
+    let path = root.0.join("queued.sock");
+    let listener = UnixListener::bind(&path).unwrap();
+    assert_eq!(unsafe { libc::listen(listener.as_raw_fd(), 1) }, 0);
+    let mut connected = Vec::new();
+    let mut saturated = false;
+    for _ in 0..16 {
+        match connect_without_waiting(&path) {
+            Ok(stream) => connected.push(stream),
+            Err(error) => {
+                assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+                saturated = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        saturated && !connected.is_empty(),
+        "backlog pressure was not exercised"
+    );
 }
