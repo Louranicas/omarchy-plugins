@@ -13,11 +13,15 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'target' / 'mutation-evidence'
 EXPECTED_FAILURE = {
+    'ask-close-queue': ['panicked at ask-runtime/tests/protocol.rs:', 'unsent prompt escaped close'],
     'vimarchy-reply-fence': ['panicked at vimarchy-runtime/tests/presenter_link.rs:', '\nmutation 0\n'],
     'ask-runtime-instance': ['panicked at ask-runtime/tests/protocol.rs:', 'left: Ok(())', 'right: Err(Stale)'],
     'yoohoo-revision-floor': ['panicked at yoohoo-runtime/tests/presenter_refresh.rs:', 'successful prior revision cannot roll back'],
 }
 CASES = [
+    ('ask-close-queue', 'ask-runtime/src/lib.rs',
+     'for value in self.outbox.drain(..) {', 'for value in std::iter::empty::<Value>() {',
+     'ask-runtime', 'protocol', 'close_discards_unsent_prompt_and_permission_approval'),
     ('vimarchy-reply-fence', 'vimarchy-runtime/src/presenter.rs',
      '|| reply.auth != self.auth', '|| false',
      'vimarchy-runtime', 'presenter_link', 'reply_fence_revision_pagination_and_geometry_fail_closed'),
@@ -33,10 +37,13 @@ CASES = [
 def run(args, cwd, env, log):
     # Linux waitid leaves the leader unreaped, reserving its PID while we clean
     # its process group. Descendants that deliberately escape it are out of scope.
+    if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
+        raise RuntimeError('exclusive child reaping requires default SIGCHLD disposition')
     with log.open('w') as stream:
         child = subprocess.Popen(args, cwd=cwd, env=env, stdout=stream,
                                  stderr=subprocess.STDOUT, start_new_session=True)
         deadline = time.monotonic() + 300
+        custody = True
         try:
             while os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
                 if time.monotonic() >= deadline:
@@ -46,20 +53,26 @@ def run(args, cwd, env, log):
                 time.sleep(0.025)
             if os.fstat(stream.fileno()).st_size > 8 * 1024 * 1024:
                 raise RuntimeError('command exceeded 8 MiB log budget')
+        except ChildProcessError:
+            # Another reaper or inherited SIGCHLD handling revoked custody.
+            custody = False
+            raise
         finally:
             try:
-                os.killpg(child.pid, signal.SIGKILL)
+                if custody:
+                    os.killpg(child.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             # A cleanup timeout is an infrastructure failure, never a killed mutant.
-            code = child.wait(timeout=5)
+            if custody:
+                code = child.wait(timeout=5)
         return code
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     results = []
-    receipt = {'scope': 'Three selected semantic controls, not coverage or a mutation score',
+    receipt = {'scope': 'Four selected semantic controls, not coverage or a mutation score',
                'passed': False, 'cases': results}
     (OUT / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
     with tempfile.TemporaryDirectory(prefix='omarchy-mutations-') as directory:
@@ -103,7 +116,7 @@ def main():
                 source.write_text(original)
     receipt['passed'] = True
     (OUT / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
-    print('Three compiled semantic mutants killed; baselines passed. See', OUT)
+    print('Four compiled semantic mutants killed; baselines passed. See', OUT)
 
 
 if __name__ == '__main__':
