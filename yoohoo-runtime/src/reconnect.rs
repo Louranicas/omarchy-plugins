@@ -246,6 +246,10 @@ impl Sources {
                 .ok_or(Error::Stale)?
                 .poll_before(&mut self.runtime, ms, end)?
             {
+                if Instant::now() >= end {
+                    offline(&mut self.runtime)?;
+                    return Err(Error::Stale);
+                }
                 return Ok((
                     self.native.take().ok_or(Error::Stale)?,
                     self.runtime,

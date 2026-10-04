@@ -369,10 +369,26 @@ impl Native {
         now: u64,
         deadline: Instant,
     ) -> Result<bool, Error> {
+        self.poll_with_completion_clock(runtime, now, deadline, Instant::now)
+    }
+    fn poll_with_completion_clock(
+        &mut self,
+        runtime: &mut Runtime,
+        now: u64,
+        deadline: Instant,
+        completed: impl FnOnce() -> Instant,
+    ) -> Result<bool, Error> {
         let result = if Instant::now() >= deadline {
             Err(Error::Stale)
         } else {
             self.poll_inner(runtime, now, deadline)
+        };
+        // A successful idle or event result arriving at/after the caller's
+        // deadline is stale too; use exactly the same revocation path.
+        let result = if completed() >= deadline {
+            Err(Error::Stale)
+        } else {
+            result
         };
         if result.is_err() {
             self.snapshots.invalidate();
@@ -521,6 +537,28 @@ mod refresh_tests {
         runtime.execute(crate::Command::Open, 4).unwrap();
         let before = runtime.attention.snapshot(true).windows.remove(0);
         let identity = native.observation(&before.key).unwrap().clone();
+        if fault == "late-idle" {
+            let view = runtime.view();
+            runtime
+                .execute(
+                    crate::Command::Activate {
+                        generation: view.generation,
+                        revision: view.revision,
+                        id: view.rows[0].id,
+                    },
+                    4,
+                )
+                .unwrap();
+            assert!(runtime.pending.is_some());
+            let end = Instant::now() + Duration::from_secs(1);
+            let result = native.poll_with_completion_clock(&mut runtime, 5, end, || end);
+            assert!(result.is_err(), "late idle result accepted");
+            assert!(runtime.view().stale);
+            assert!(runtime.pending.is_none());
+            assert!(native.observation(&before.key).is_none());
+            assert!(native.stable_target(&before.key).is_none());
+            return;
+        }
         let mut changed = row;
         changed["title"] = "New 日本語".into();
         changed["workspace"] = serde_json::json!({"id":2,"name":"Two"});
@@ -598,6 +636,10 @@ mod refresh_tests {
     #[test]
     fn duplicate_snapshot_address_revokes() {
         scenario("duplicate");
+    }
+    #[test]
+    fn late_idle_completion_revokes_identity_and_pending_activation() {
+        scenario("late-idle");
     }
     #[test]
     fn caller_query_deadline_is_not_restarted() {
