@@ -1,0 +1,18 @@
+[package]
+name = "vimarchy-runtime"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+vimarchy-core = { path = "../vimarchy-core" }
+modal-contract = { path = "../modal-contract" }
+desktop-io = { path = "../desktop-io" }
+modal-client = { path = "../modal-client" }
+modal-runtime = { path = "../modal-runtime" }
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+
+tempfile = "3"
+
+libc = "0.2"

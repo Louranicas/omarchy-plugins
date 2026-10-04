@@ -1,0 +1,10 @@
+[package]
+name = "ask-core"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Deterministic Ask lifecycle, launch and permission contracts"
+
+[dependencies]
+serde = "1"
+serde_json = "1"

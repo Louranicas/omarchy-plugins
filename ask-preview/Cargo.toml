@@ -1,0 +1,11 @@
+[package]
+name = "ask-preview"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+ask-files = { path = "../ask-files" }
+omarchy-process-runner = { path = "../process-runner" }
+libc = "0.2"
+tempfile = "3"

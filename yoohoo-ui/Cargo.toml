@@ -1,0 +1,16 @@
+[package]
+name = "yoohoo-ui"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+[workspace]
+[dependencies]
+gtk = { package = "gtk4", version = "=0.11.5", features = ["v4_14"] }
+gtk4-layer-shell = "=0.8.1"
+modal-runtime = { path = "../modal-runtime" }
+modal-client = { path = "../modal-client" }
+desktop-io = { path = "../desktop-io" }
+yoohoo-runtime = { path = "../yoohoo-runtime" }
+[profile.dev]
+debug = 0

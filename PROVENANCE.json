@@ -1,0 +1,21 @@
+{
+  "source_commits": [
+    {
+      "repository": "omarchy-agentd-rust",
+      "commit": "25794b272f249dab64a5aacb7804cfc7244f62a0"
+    },
+    {
+      "repository": "omarchy-ask-rust",
+      "commit": "7c2420d210b33c09bacb9c506650440dd76ea415"
+    },
+    {
+      "repository": "omarchy-vimarchy-rust",
+      "commit": "14f29b70d900581d5714cb0b219c6a5cad87378c"
+    },
+    {
+      "repository": "omarchy-yoohoo-rust",
+      "commit": "ad9ef104d9e43d9e01bd916395f0079fcc56ed40"
+    }
+  ],
+  "status": "development snapshots; not deployment qualified"
+}

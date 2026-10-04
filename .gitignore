@@ -1,0 +1,6 @@
+**/target/
+.env
+.env.*
+*.pem
+*.key
+__pycache__/

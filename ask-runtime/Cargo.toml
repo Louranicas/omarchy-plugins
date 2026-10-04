@@ -1,0 +1,10 @@
+[package]
+name = "ask-runtime"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+[dependencies]
+ask-core = { path = "../ask-core" }
+acp-transport = { path = "../acp-transport" }
+serde_json = "1"
+libc = "0.2"

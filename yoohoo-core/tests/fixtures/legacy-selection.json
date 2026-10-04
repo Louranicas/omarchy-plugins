@@ -1,0 +1,1537 @@
+{
+  "source": "payload/Selection.js",
+  "commit": "1e399639d48728fe4facb738ccce1834ab687cf4",
+  "sha256": "d8d63a37805080e054fc0e1f7eaa5d0b340e3ea53b6e9ae04c6305793adf323c",
+  "cases": [
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [],
+      "selected": "",
+      "next": "",
+      "previous_step": "",
+      "reconciled": ""
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [],
+      "selected": "0x1",
+      "next": "",
+      "previous_step": "",
+      "reconciled": ""
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [],
+      "selected": "0x2",
+      "next": "",
+      "previous_step": "",
+      "reconciled": ""
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [],
+      "selected": "0x3",
+      "next": "",
+      "previous_step": "",
+      "reconciled": ""
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [],
+      "selected": "0x4",
+      "next": "",
+      "previous_step": "",
+      "reconciled": ""
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [],
+      "selected": "0x5",
+      "next": "",
+      "previous_step": "",
+      "reconciled": ""
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1"
+      ],
+      "selected": "",
+      "next": "0x1",
+      "previous_step": "0x1",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1"
+      ],
+      "selected": "0x1",
+      "next": "0x1",
+      "previous_step": "0x1",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1"
+      ],
+      "selected": "0x2",
+      "next": "0x1",
+      "previous_step": "0x1",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1"
+      ],
+      "selected": "0x3",
+      "next": "0x1",
+      "previous_step": "0x1",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1"
+      ],
+      "selected": "0x4",
+      "next": "0x1",
+      "previous_step": "0x1",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1"
+      ],
+      "selected": "0x5",
+      "next": "0x1",
+      "previous_step": "0x1",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2"
+      ],
+      "selected": "",
+      "next": "0x2",
+      "previous_step": "0x2",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2"
+      ],
+      "selected": "0x1",
+      "next": "0x2",
+      "previous_step": "0x2",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2"
+      ],
+      "selected": "0x2",
+      "next": "0x2",
+      "previous_step": "0x2",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2"
+      ],
+      "selected": "0x3",
+      "next": "0x2",
+      "previous_step": "0x2",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2"
+      ],
+      "selected": "0x4",
+      "next": "0x2",
+      "previous_step": "0x2",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2"
+      ],
+      "selected": "0x5",
+      "next": "0x2",
+      "previous_step": "0x2",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2"
+      ],
+      "selected": "",
+      "next": "0x1",
+      "previous_step": "0x2",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2"
+      ],
+      "selected": "0x1",
+      "next": "0x2",
+      "previous_step": "0x2",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2"
+      ],
+      "selected": "0x2",
+      "next": "0x1",
+      "previous_step": "0x1",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2"
+      ],
+      "selected": "0x3",
+      "next": "0x1",
+      "previous_step": "0x2",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2"
+      ],
+      "selected": "0x4",
+      "next": "0x1",
+      "previous_step": "0x2",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2"
+      ],
+      "selected": "0x5",
+      "next": "0x1",
+      "previous_step": "0x2",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3"
+      ],
+      "selected": "",
+      "next": "0x3",
+      "previous_step": "0x3",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3"
+      ],
+      "selected": "0x1",
+      "next": "0x3",
+      "previous_step": "0x3",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3"
+      ],
+      "selected": "0x2",
+      "next": "0x3",
+      "previous_step": "0x3",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3"
+      ],
+      "selected": "0x3",
+      "next": "0x3",
+      "previous_step": "0x3",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3"
+      ],
+      "selected": "0x4",
+      "next": "0x3",
+      "previous_step": "0x3",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3"
+      ],
+      "selected": "0x5",
+      "next": "0x3",
+      "previous_step": "0x3",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3"
+      ],
+      "selected": "",
+      "next": "0x1",
+      "previous_step": "0x3",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3"
+      ],
+      "selected": "0x1",
+      "next": "0x3",
+      "previous_step": "0x3",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3"
+      ],
+      "selected": "0x2",
+      "next": "0x1",
+      "previous_step": "0x3",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3"
+      ],
+      "selected": "0x3",
+      "next": "0x1",
+      "previous_step": "0x1",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3"
+      ],
+      "selected": "0x4",
+      "next": "0x1",
+      "previous_step": "0x3",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3"
+      ],
+      "selected": "0x5",
+      "next": "0x1",
+      "previous_step": "0x3",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3"
+      ],
+      "selected": "",
+      "next": "0x2",
+      "previous_step": "0x3",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x1",
+      "next": "0x2",
+      "previous_step": "0x3",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x2",
+      "next": "0x3",
+      "previous_step": "0x3",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x3",
+      "next": "0x2",
+      "previous_step": "0x2",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x4",
+      "next": "0x2",
+      "previous_step": "0x3",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x5",
+      "next": "0x2",
+      "previous_step": "0x3",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3"
+      ],
+      "selected": "",
+      "next": "0x1",
+      "previous_step": "0x3",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x1",
+      "next": "0x2",
+      "previous_step": "0x3",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x2",
+      "next": "0x3",
+      "previous_step": "0x1",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x3",
+      "next": "0x1",
+      "previous_step": "0x2",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x4",
+      "next": "0x1",
+      "previous_step": "0x3",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3"
+      ],
+      "selected": "0x5",
+      "next": "0x1",
+      "previous_step": "0x3",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x4"
+      ],
+      "selected": "",
+      "next": "0x4",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x4"
+      ],
+      "selected": "0x1",
+      "next": "0x4",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x4"
+      ],
+      "selected": "0x2",
+      "next": "0x4",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x4"
+      ],
+      "selected": "0x3",
+      "next": "0x4",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x4"
+      ],
+      "selected": "0x4",
+      "next": "0x4",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x4"
+      ],
+      "selected": "0x5",
+      "next": "0x4",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x4"
+      ],
+      "selected": "",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x4"
+      ],
+      "selected": "0x1",
+      "next": "0x4",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x4"
+      ],
+      "selected": "0x2",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x4"
+      ],
+      "selected": "0x3",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x4"
+      ],
+      "selected": "0x4",
+      "next": "0x1",
+      "previous_step": "0x1",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x4"
+      ],
+      "selected": "0x5",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x4"
+      ],
+      "selected": "",
+      "next": "0x2",
+      "previous_step": "0x4",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x1",
+      "next": "0x2",
+      "previous_step": "0x4",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x2",
+      "next": "0x4",
+      "previous_step": "0x4",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x3",
+      "next": "0x2",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x4",
+      "next": "0x2",
+      "previous_step": "0x2",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x5",
+      "next": "0x2",
+      "previous_step": "0x4",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x4"
+      ],
+      "selected": "",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x1",
+      "next": "0x2",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x2",
+      "next": "0x4",
+      "previous_step": "0x1",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x3",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x4",
+      "next": "0x1",
+      "previous_step": "0x2",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x4"
+      ],
+      "selected": "0x5",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3",
+        "0x4"
+      ],
+      "selected": "",
+      "next": "0x3",
+      "previous_step": "0x4",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x1",
+      "next": "0x3",
+      "previous_step": "0x4",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x2",
+      "next": "0x3",
+      "previous_step": "0x4",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x3",
+      "next": "0x4",
+      "previous_step": "0x4",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x4",
+      "next": "0x3",
+      "previous_step": "0x3",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x5",
+      "next": "0x3",
+      "previous_step": "0x4",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x1",
+      "next": "0x3",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x2",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x3",
+      "next": "0x4",
+      "previous_step": "0x1",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x4",
+      "next": "0x1",
+      "previous_step": "0x3",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x5",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "",
+      "next": "0x2",
+      "previous_step": "0x4",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x1",
+      "next": "0x2",
+      "previous_step": "0x4",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x2",
+      "next": "0x3",
+      "previous_step": "0x4",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x3",
+      "next": "0x4",
+      "previous_step": "0x2",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x4",
+      "next": "0x2",
+      "previous_step": "0x3",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x5",
+      "next": "0x2",
+      "previous_step": "0x4",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x1",
+      "next": "0x2",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x2",
+      "next": "0x3",
+      "previous_step": "0x1",
+      "reconciled": "0x2"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x3",
+      "next": "0x4",
+      "previous_step": "0x2",
+      "reconciled": "0x3"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x4",
+      "next": "0x1",
+      "previous_step": "0x3",
+      "reconciled": "0x4"
+    },
+    {
+      "previous": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "windows": [
+        "0x1",
+        "0x2",
+        "0x3",
+        "0x4"
+      ],
+      "selected": "0x5",
+      "next": "0x1",
+      "previous_step": "0x4",
+      "reconciled": "0x1"
+    }
+  ]
+}

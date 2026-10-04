@@ -1,0 +1,16 @@
+[package]
+name = "vimarchy-ui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+gtk = { package = "gtk4", version = "=0.11.5", features = ["v4_14"] }
+gtk4-layer-shell = "=0.8.1"
+vimarchy-runtime = { path = "../vimarchy-runtime" }
+vimarchy-core = { path = "../vimarchy-core" }
+modal-contract = { path = "../modal-contract" }
+modal-runtime = { path = "../modal-runtime" }
+desktop-io = { path = "../desktop-io" }

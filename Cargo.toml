@@ -1,0 +1,13 @@
+[workspace]
+resolver = "3"
+members = ["acp-transport", "agentd", "ask-core", "ask-files", "ask-preview", "ask-runtime", "desktop-io", "modal-client", "modal-contract", "modal-runtime", "process-runner", "vimarchy-core", "vimarchy-runtime", "yoohoo-core", "yoohoo-runtime"]
+exclude = ["ask-native", "vimarchy-ui", "yoohoo-ui"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

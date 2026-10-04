@@ -1,0 +1,57 @@
+{
+  "commit": "efb50993780079460b0cbed1363e2166a2de1d9f",
+  "installed_version": "0.56.2",
+  "sources": [
+    {
+      "source": "https://raw.githubusercontent.com/hyprwm/Hyprland/efb50993780079460b0cbed1363e2166a2de1d9f/src/desktop/state/ViewQuery.cpp",
+      "file": "ViewQuery.cpp",
+      "sha256": "10acb6240350d3fcb07544ab34279bd050984f02b1087d2d4a1febe4d2cbf1cc"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/hyprwm/Hyprland/efb50993780079460b0cbed1363e2166a2de1d9f/src/debug/HyprCtl.cpp",
+      "file": "HyprCtl.cpp",
+      "sha256": "798b7c6c4c1684557842463d46ac99c96629be4179e0e461dca77670247b91fa"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/hyprwm/Hyprland/efb50993780079460b0cbed1363e2166a2de1d9f/src/desktop/view/Window.cpp",
+      "file": "Window.cpp",
+      "sha256": "d735d454cc4b7983f19626514d310669047da46780c509ffae68ccf072211ded"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/hyprwm/Hyprland/efb50993780079460b0cbed1363e2166a2de1d9f/src/config/lua/bindings/LuaBindingsDispatchers.cpp",
+      "file": "LuaBindingsDispatchers.cpp",
+      "sha256": "a109eeb982856e0fe2ac9d88c29115a09984511787e19a20e7b4804e14a9d4de"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/hyprwm/Hyprland/efb50993780079460b0cbed1363e2166a2de1d9f/src/config/lua/bindings/LuaBindingsToplevel.cpp",
+      "file": "LuaBindingsToplevel.cpp",
+      "sha256": "706b29eb52de087c1d6e64770cf85fb3ebc0f2fbe9ddcff086905499bcd332f5"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/hyprwm/Hyprland/efb50993780079460b0cbed1363e2166a2de1d9f/src/config/lua/bindings/LuaBindingsQuery.cpp",
+      "file": "LuaBindingsQuery.cpp",
+      "sha256": "af0d274b5616ae69b8f62bdf2534a29586eab2a3d20b28c1b0e620d313ca66db"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/hyprwm/Hyprland/efb50993780079460b0cbed1363e2166a2de1d9f/src/config/lua/ConfigManager.cpp",
+      "file": "ConfigManager.cpp",
+      "sha256": "94b5c6891326e7a3e490019d26fd9d6f5b3137fb5318a94dff0a6cb6dfdaf502"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/hyprwm/Hyprland/efb50993780079460b0cbed1363e2166a2de1d9f/src/config/lua/bindings/LuaBindingsInternal.cpp",
+      "file": "LuaBindingsInternal.cpp",
+      "sha256": "5f6534641d58073bbcbd3e004b168659d497072596cf10c9f2b189c55c2233e9"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/hyprwm/Hyprland/efb50993780079460b0cbed1363e2166a2de1d9f/LICENSE",
+      "file": "LICENSE",
+      "sha256": "e01df754903af0ab26babb317b5f5a62dd95f770b733c5275414dd3245d00ae7"
+    }
+  ],
+  "scope": "Protocol evidence, not live compositor execution proof",
+  "host_readback": {
+    "file": "installed-version-readonly.json",
+    "command": "hyprctl -j version (read only)",
+    "sha256": "aba98e3446e5f6606ea7b0ab5d4fec771afc6da8d295d518764dfc3b2c2e4fd6"
+  }
+}

@@ -1,0 +1,259 @@
+{
+  "commit": "02921bb13d90e0995cb69bd6652407add14ea861",
+  "source_hashes": {
+    "bridge.js": "770dc61f194d0b68066488b79b2d2b054548ab59fcb5ecffab65d80946ed0fc8",
+    "harness-policy.js": "0140577bc6d979b63644663ac40810ca306aabc1057d2a56fa9481d826df818a"
+  },
+  "command_cases": [
+    {
+      "agent": "codex",
+      "specific": "",
+      "shared": "",
+      "args": [
+        "installed-adapter"
+      ]
+    },
+    {
+      "agent": "codex",
+      "specific": "",
+      "shared": "[\"shared\"]",
+      "args": [
+        "shared"
+      ]
+    },
+    {
+      "agent": "codex",
+      "specific": " ",
+      "shared": "",
+      "args": [
+        "installed-adapter"
+      ]
+    },
+    {
+      "agent": "codex",
+      "specific": " ",
+      "shared": "[\"shared\"]",
+      "args": [
+        "installed-adapter"
+      ]
+    },
+    {
+      "agent": "codex",
+      "specific": "[\"specific\",\"two words\"]",
+      "shared": "",
+      "args": [
+        "specific",
+        "two words"
+      ]
+    },
+    {
+      "agent": "codex",
+      "specific": "[\"specific\",\"two words\"]",
+      "shared": "[\"shared\"]",
+      "args": [
+        "specific",
+        "two words"
+      ]
+    },
+    {
+      "agent": "codex",
+      "specific": "invalid",
+      "shared": "",
+      "error": true
+    },
+    {
+      "agent": "codex",
+      "specific": "invalid",
+      "shared": "[\"shared\"]",
+      "error": true
+    },
+    {
+      "agent": "codex",
+      "specific": "[\"x\",\"\"]",
+      "shared": "",
+      "error": true
+    },
+    {
+      "agent": "codex",
+      "specific": "[\"x\",\"\"]",
+      "shared": "[\"shared\"]",
+      "error": true
+    },
+    {
+      "agent": "claude",
+      "specific": "",
+      "shared": "",
+      "args": [
+        "installed-adapter"
+      ]
+    },
+    {
+      "agent": "claude",
+      "specific": "",
+      "shared": "[\"shared\"]",
+      "args": [
+        "shared"
+      ]
+    },
+    {
+      "agent": "claude",
+      "specific": " ",
+      "shared": "",
+      "args": [
+        "installed-adapter"
+      ]
+    },
+    {
+      "agent": "claude",
+      "specific": " ",
+      "shared": "[\"shared\"]",
+      "args": [
+        "installed-adapter"
+      ]
+    },
+    {
+      "agent": "claude",
+      "specific": "[\"specific\",\"two words\"]",
+      "shared": "",
+      "args": [
+        "specific",
+        "two words"
+      ]
+    },
+    {
+      "agent": "claude",
+      "specific": "[\"specific\",\"two words\"]",
+      "shared": "[\"shared\"]",
+      "args": [
+        "specific",
+        "two words"
+      ]
+    },
+    {
+      "agent": "claude",
+      "specific": "invalid",
+      "shared": "",
+      "error": true
+    },
+    {
+      "agent": "claude",
+      "specific": "invalid",
+      "shared": "[\"shared\"]",
+      "error": true
+    },
+    {
+      "agent": "claude",
+      "specific": "[\"x\",\"\"]",
+      "shared": "",
+      "error": true
+    },
+    {
+      "agent": "claude",
+      "specific": "[\"x\",\"\"]",
+      "shared": "[\"shared\"]",
+      "error": true
+    }
+  ],
+  "harness_cases": [
+    {
+      "override": "",
+      "default": "",
+      "error": true
+    },
+    {
+      "override": "",
+      "default": "codex\n",
+      "harness": "codex"
+    },
+    {
+      "override": "",
+      "default": "claude",
+      "harness": "claude"
+    },
+    {
+      "override": "",
+      "default": "gemini",
+      "error": true
+    },
+    {
+      "override": " ",
+      "default": "",
+      "error": true
+    },
+    {
+      "override": " ",
+      "default": "codex\n",
+      "harness": "codex"
+    },
+    {
+      "override": " ",
+      "default": "claude",
+      "harness": "claude"
+    },
+    {
+      "override": " ",
+      "default": "gemini",
+      "error": true
+    },
+    {
+      "override": "codex",
+      "default": "",
+      "harness": "codex"
+    },
+    {
+      "override": "codex",
+      "default": "codex\n",
+      "harness": "codex"
+    },
+    {
+      "override": "codex",
+      "default": "claude",
+      "harness": "codex"
+    },
+    {
+      "override": "codex",
+      "default": "gemini",
+      "harness": "codex"
+    },
+    {
+      "override": " claude ",
+      "default": "",
+      "harness": "claude"
+    },
+    {
+      "override": " claude ",
+      "default": "codex\n",
+      "harness": "claude"
+    },
+    {
+      "override": " claude ",
+      "default": "claude",
+      "harness": "claude"
+    },
+    {
+      "override": " claude ",
+      "default": "gemini",
+      "harness": "claude"
+    },
+    {
+      "override": "gemini",
+      "default": "",
+      "error": true
+    },
+    {
+      "override": "gemini",
+      "default": "codex\n",
+      "error": true
+    },
+    {
+      "override": "gemini",
+      "default": "claude",
+      "error": true
+    },
+    {
+      "override": "gemini",
+      "default": "gemini",
+      "error": true
+    }
+  ]
+}

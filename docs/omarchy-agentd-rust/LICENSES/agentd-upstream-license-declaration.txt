@@ -1,0 +1,27 @@
+Upstream licensing evidence; this is not a fabricated upstream LICENSE file.
+
+Repository: https://github.com/clickety-clacks/agentd
+Commit: a539cf2f327e304a71fd333fd53d4296b9e339c1
+Source: https://github.com/clickety-clacks/agentd/blob/a539cf2f327e304a71fd333fd53d4296b9e339c1/Cargo.toml
+
+The committed package manifest declares license = "MIT". No root LICENSE or NOTICE file exists in the inspected committed tree. No upstream copyright holder is invented here.
+
+Exact upstream Cargo.toml follows:
+
+[package]
+name = "agentd"
+version = "0.3.3"
+edition = "2024"
+license = "MIT"
+description = "Truthful local registry and event stream for coding agents"
+
+[dependencies]
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+shell-words = "1"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
