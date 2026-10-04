@@ -34,7 +34,7 @@ Review tightened the disappearance assertion so an environment where every fixtu
 
 ## Combined verification
 
-The integrated source passed `tools/check.sh --native --offline`: 12 commands, 544 passing test executions, zero failures and two ignored entries, with formatting and strict Clippy clean. Tracked non-Markdown inputs stayed unchanged. Counts overlap across workspaces. Four standard compiled semantic controls also passed their baselines and detected their intended mutations. Independent lane checks are bounded as described above; the pending authenticated vendor fixture is not reclassified.
+The integrated source passed `tools/check.sh --native --offline`: 12 commands, 554 passing test executions, zero failures and two ignored entries, with formatting and strict Clippy clean. Tracked non-Markdown inputs stayed unchanged. Counts overlap across workspaces. Four standard compiled semantic controls also passed their baselines and detected their intended mutations. Independent lane checks are bounded as described above; the pending authenticated vendor fixture is not reclassified.
 
 ## Agentd CI fixture correction
 
@@ -51,6 +51,14 @@ The ABI-pinned compositor fixture now feeds the actual Rust Ingress, Gate and Se
 Agentd production behavior is unchanged. New [resource-exhaustion tests](../agentd/RESOURCE-EXHAUSTION.md) apply a child-only descriptor limit, witness an admitted subscriber, require terminal failure and socket cleanup, drain buffered data to explicit EOF/reset within fixed budgets, and demonstrate a manual fresh-instance restart. Nonblocking pressure connections cannot wait indefinitely on a full backlog. The package passed 91 tests with one existing ignored entry; independent review passed all 21 integration tests, extra deadline probes and a compiled buffered-data bypass control. Manual restart does not qualify systemd recovery.
 
 The final combined local gate passed 544 overlapping test executions, zero failures and two ignored entries, with 191 tracked non-Markdown inputs stable. The canonical candidate separately passed 587 executions, zero failures and five ignored entries with formatting, strict Clippy and compilation clean. These totals overlap and are not additive. Owner and independent semantic controls are scoped tests, not a global mutation score. Hosted CI remains a separate gate.
+
+## Configured recovery and source reconnection
+
+Ask adds [synthetic configured-adapter recovery tests](../ask-runtime/RECOVERY.md): cooperative cancellation rejects late permissions/text, ignored cancellation and TERM escalate to actual reap, an unrelated worker remains usable, and a fresh worker refuses an old instance's permission even when generation and wire identifiers repeat. Independent review reproduced cleanup on panic and stale-instance rejection. This changes tests and documentation only; real vendor acceptance and managed UI restart remain open.
+
+Yoohoo adds a [nonmodal source supervisor](../yoohoo-runtime/RECONNECT.md) with bounded retry/backoff/jitter, retained endpoint identity, cleared selection/pending activation and fresh observation snapshots. Explicit transfer provides source state only; callers must acquire new modal authority. Independent review reproduced a late idle poll being accepted after its deadline. The correction checks completion and final transfer deadlines; the original delayed-poll reproduction now refuses transfer. The package passed 44 tests; independent backlog and EOF controls passed. No controller/UI reconnection or production modal recovery is claimed.
+
+The final combined gate passed 554 overlapping executions, zero failures and two ignored entries; 195 non-Markdown inputs remained stable. The canonical candidate separately passed 597 executions, zero failures and five ignored entries, with formatting, strict Clippy and compilation clean. Hosted portable CI is checked separately. Prior failures and receipts remain historical evidence; no release gates advance from these partial scenarios.
 
 ## Remaining integration order
 
