@@ -115,6 +115,26 @@ pub struct Sources {
     previous_epoch: Option<[u8; 16]>,
 }
 impl Sources {
+    pub(crate) fn resume(
+        native: Native,
+        mut runtime: Runtime,
+        origin: Instant,
+        policy: Policy,
+    ) -> Result<Self, Error> {
+        let schedule = Schedule::new(policy)?;
+        runtime.pending = None;
+        runtime.effects.clear();
+        runtime.selection.close(runtime.selection.generation())?;
+        Ok(Self {
+            endpoint: native.endpoint(),
+            native: Some(native),
+            runtime,
+            schedule,
+            origin,
+            previous_epoch: None,
+        })
+    }
+
     /// `origin` must be the original clock origin used for the supplied Runtime.
     pub fn new(
         endpoint: Endpoint,

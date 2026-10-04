@@ -25,13 +25,15 @@ pub struct Service {
     auth: Auth,
     client: Client,
     targets: Targets,
-    native: Native,
+    native: Option<Native>,
     runtime: Runtime,
     origin: Instant,
     renewed: Instant,
     revision: Counter,
     request: u64,
     closed: bool,
+    faulted: bool,
+    released: Option<bool>,
 }
 impl Service {
     pub fn bind(root: &Path) -> io::Result<ControlSocket> {
@@ -66,13 +68,15 @@ impl Service {
             auth,
             client,
             targets,
-            native,
+            native: Some(native),
             runtime,
             origin,
             renewed: now,
             revision: Counter::new(1).unwrap(),
             request: 0,
             closed: false,
+            faulted: false,
+            released: None,
         })
     }
     pub fn is_closed(&self) -> bool {
@@ -97,6 +101,8 @@ impl Service {
             let now = self.now();
             if !self
                 .native
+                .as_mut()
+                .ok_or_else(invalid)?
                 .poll_before(&mut self.runtime, now, end)
                 .map_err(|_| invalid())?
             {
@@ -127,6 +133,7 @@ impl Service {
     pub fn step(&mut self) -> io::Result<bool> {
         let result = self.step_inner();
         if result.is_err() {
+            self.faulted = true;
             self.close();
         }
         result
@@ -166,6 +173,9 @@ impl Service {
             .deadline
             .min(Instant::now() + Duration::from_millis(250))
             .min(step_deadline);
+        if !self.connection.as_mut().ok_or_else(invalid)?.read_ready()? {
+            return Ok(false);
+        }
         let bytes = self
             .connection
             .as_mut()
@@ -209,8 +219,12 @@ impl Service {
                     if self.fresh(step_deadline)? {
                         return Err(invalid());
                     }
-                    let (instance, stable) =
-                        self.native.stable_target(&intent.key).ok_or_else(invalid)?;
+                    let (instance, stable) = self
+                        .native
+                        .as_ref()
+                        .ok_or_else(invalid)?
+                        .stable_target(&intent.key)
+                        .ok_or_else(invalid)?;
                     let index = self
                         .targets
                         .rows()
@@ -254,19 +268,46 @@ impl Service {
         }
         Ok(true)
     }
+    /// Sticky observed release outcome. Closed alone never proves cleanup.
+    pub fn cleanup_confirmed(&self) -> bool {
+        !self.faulted && self.released == Some(true)
+    }
     pub fn close(&mut self) {
         self.closed = true;
         let view = self.runtime.view();
-        if view.open {
-            let _ = self.runtime.execute(
-                Command::Close {
-                    generation: view.generation,
-                },
-                self.now(),
-            );
+        if view.open
+            && self
+                .runtime
+                .execute(
+                    Command::Close {
+                        generation: view.generation,
+                    },
+                    self.now(),
+                )
+                .is_err()
+        {
+            self.faulted = true;
         }
         self.connection = None;
-        let _ = self.client.release();
+        if self.released.is_none() {
+            self.released = Some(self.client.release().is_ok());
+        }
+    }
+    /// Consumes old client/view/auth/data channel. Only source observations can
+    /// resume after the Host confirms presenter reap and compositor dismissal.
+    pub fn into_sources(
+        mut self,
+        policy: crate::reconnect::Policy,
+    ) -> io::Result<crate::reconnect::Sources> {
+        self.close();
+        if !self.cleanup_confirmed() {
+            return Err(invalid());
+        }
+        let native = self.native.take().ok_or_else(invalid)?;
+        let runtime =
+            std::mem::replace(&mut self.runtime, Runtime::empty().map_err(|_| invalid())?);
+        crate::reconnect::Sources::resume(native, runtime, self.origin, policy)
+            .map_err(|_| invalid())
     }
 }
 impl Drop for Service {

@@ -20,6 +20,9 @@ pub struct Native {
     stable_ids: BTreeMap<String, StableId>,
 }
 impl Native {
+    pub(crate) fn endpoint(&self) -> Arc<Endpoint> {
+        self.endpoint.clone()
+    }
     pub fn connect(endpoint: Endpoint, epoch: [u8; 16]) -> Result<Self, desktop_io::Error> {
         Self::connect_before(
             Arc::new(endpoint),
