@@ -590,22 +590,22 @@ fn main() -> glib::ExitCode {
                 }
                 let (socket, parent, hello) = (socket.clone(), parent, hello.clone());
                 let tx = grant_tx.clone();
-                glib::idle_add_local_once(move || {
-                    std::thread::spawn(move || {
-                        let allowed = match (socket, parent, hello) {
-                            (Some(socket), Some(parent), Some(hello)) => {
-                                modal_runtime::readiness::report_mapped(
-                                    &socket,
-                                    parent,
-                                    &hello,
-                                    Instant::now() + Duration::from_secs(2),
-                                )
-                                .is_ok()
-                            }
-                            _ => false,
-                        };
-                        let _ = tx.try_send(allowed);
-                    });
+                // Start after the actual map and flush. An idle callback can be
+                // starved during admission; this worker captures no GTK objects.
+                std::thread::spawn(move || {
+                    let allowed = match (socket, parent, hello) {
+                        (Some(socket), Some(parent), Some(hello)) => {
+                            modal_runtime::readiness::report_mapped(
+                                &socket,
+                                parent,
+                                &hello,
+                                Instant::now() + Duration::from_secs(2),
+                            )
+                            .is_ok()
+                        }
+                        _ => false,
+                    };
+                    let _ = tx.try_send(allowed);
                 });
                 println!(
                     "mapped_managed=true authority_pending=true size={}x{}",
