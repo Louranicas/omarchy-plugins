@@ -364,7 +364,7 @@ pub fn run() -> glib::ExitCode {
   let window=gtk::ApplicationWindow::builder().application(app).title("Vimarchy managed fixture").build();window.init_layer_shell();window.set_namespace(Some(&config.namespace));window.set_monitor(Some(&monitor));window.set_layer(Layer::Overlay);window.set_keyboard_mode(KeyboardMode::None);window.set_exclusive_zone(0);for edge in [Edge::Top,Edge::Bottom,Edge::Left,Edge::Right]{window.set_anchor(edge,true);}
   let fixed=gtk::Fixed::new();fixed.set_size_request(1,1);window.set_child(Some(&fixed));
   let loading=gtk::Label::new(Some("Loading hints…"));loading.set_can_target(false);loading.set_can_focus(false);loading.set_visible(passive);fixed.put(&loading,16.,16.);
-  let controls=gtk::Box::new(gtk::Orientation::Vertical,8);controls.add_css_class("controller");controls.set_sensitive(false);controls.set_visible(!passive);controls.set_can_focus(false);
+  let controls=gtk::Box::new(gtk::Orientation::Vertical,8);controls.add_css_class("controller");controls.set_sensitive(false);controls.set_visible(!passive);controls.set_can_focus(!passive);
   controls.append(&gtk::Label::new(Some("Managed fixture · authenticated daemon-provided hints")));
   let entry=gtk::Entry::builder().placeholder_text("Window hint").max_length(2).build();entry.update_property(&[gtk::accessible::Property::Label("Managed fixture window hint")]);controls.append(&entry);
   let submit=gtk::Button::with_label("Select hint");controls.append(&submit);let status=gtk::Label::new(Some("Waiting for authenticated activation and data"));controls.append(&status);

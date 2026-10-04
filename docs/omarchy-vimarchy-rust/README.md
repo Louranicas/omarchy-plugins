@@ -34,3 +34,5 @@ cargo clippy --manifest-path vimarchy-ui/Cargo.toml --all-targets --locked -- -D
 Required local Rust crates are included as sibling directories so path dependencies resolve without another checkout. `SOURCE-MANIFEST.json` records copied source hashes. Shared crates are snapshot copies; changes must be reconciled with the development workspace before the next publication.
 
 See `THIRD_PARTY.md` for upstream attribution. Local watch state, review sessions, transcripts, machine-specific evidence, build outputs and deployment secrets are excluded. Publication does not install services or enable desktop integrations.
+
+The passive-mode follow-up also preserves entry focus in interactive fixtures. A regression that prevented changing the selected hint was corrected and independently checked with actual GTK input; this does not supply the missing production input adapter.

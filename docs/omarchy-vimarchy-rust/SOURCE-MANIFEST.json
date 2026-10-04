@@ -74,7 +74,7 @@
     "vimarchy-ui/Cargo.lock": "30bdbf6df45f5a5ff4de36e4546fc57838c82537c768d5aab58230a331b207db",
     "vimarchy-ui/Cargo.toml": "3d2bcd87dffa3aebf5313249cb63e885ecb10cd2dc0390f569ee1fe2055175b9",
     "vimarchy-ui/src/main.rs": "4a479987a2d975ece5c3767032974fce504edbf3110b6901b9bbbd2e0bde212b",
-    "vimarchy-ui/src/managed.rs": "3a3ae476894ba94bbc01c50e1c1f06dca452f2acb7427d120ae53acca7673497",
+    "vimarchy-ui/src/managed.rs": "189a6a9bbfa76b9cde75efd4b0dd409a4d25d8394af7ecb6ca18c16af198994b",
     "vimarchy-ui/src/radial.rs": "fefcb66a7b350b45be29c7adf9d53f8b27fd123b65aebe5df14456fc7d6d5e87"
   },
   "publication_adaptations": {
@@ -90,6 +90,13 @@
         "vimarchy-ui/src/managed.rs"
       ],
       "scope": "Explicit passive managed renderer; independently reviewed in controlled fixtures. Input adapter and production qualification remain absent."
+    },
+    {
+      "date": "2026-10-04",
+      "files": [
+        "vimarchy-ui/src/managed.rs"
+      ],
+      "scope": "Restore interactive fixture entry focus while retaining passive descendant focus refusal; independently checked changed-target and ordinary double-tap cases."
     }
   ]
 }
