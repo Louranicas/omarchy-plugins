@@ -348,6 +348,8 @@ install or uninstall is byte-idempotent.
 
 ## Operate the service
 
+Agentd refuses clients above its admission ceilings. A socket-allocation failure instead takes the error shutdown path, closing connections and exiting unsuccessfully. The shipped unit requests restart-on-failure; successful installed recovery depends on the supervisor environment. This differs from continuing service under ordinary bounded overload.
+
 Inspect status and logs:
 
 ```sh

@@ -8,6 +8,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, symlink};
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::rc::Rc;
@@ -44,6 +45,9 @@ struct Daemon {
 }
 impl Daemon {
     fn spawn(runtime: &Path) -> Self {
+        Self::spawn_with_fd_limit(runtime, None)
+    }
+    fn spawn_with_fd_limit(runtime: &Path, fd_limit: Option<libc::rlim_t>) -> Self {
         let reservation = ReapReservation::reserve().unwrap();
         let diagnostics = runtime.join(format!("daemon-test-stderr-{}", monotonic_suffix()));
         let stderr = fs::OpenOptions::new()
@@ -52,15 +56,32 @@ impl Daemon {
             .mode(0o600)
             .open(&diagnostics)
             .unwrap();
-        let child = Command::new(env!("CARGO_BIN_EXE_agentd"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_agentd"));
+        command
             .arg("daemon")
             .env("XDG_RUNTIME_DIR", runtime)
             .env("XDG_STATE_HOME", runtime.join("state"))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(stderr)
-            .spawn()
-            .unwrap();
+            .stderr(stderr);
+        if let Some(limit) = fd_limit {
+            // Scope resource injection to the new child only. No tmux probe is
+            // needed for this transport test and no host limit is modified.
+            command.env("PATH", runtime.join("no-tools"));
+            unsafe {
+                command.pre_exec(move || {
+                    let bound = libc::rlimit {
+                        rlim_cur: limit,
+                        rlim_max: limit,
+                    };
+                    if libc::setrlimit(libc::RLIMIT_NOFILE, &bound) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+        }
+        let child = command.spawn().unwrap();
         Self {
             child: RefCell::new(Some(child)),
             reservation: Some(reservation),
@@ -1410,4 +1431,124 @@ fn startup_snapshot_drip_cannot_refresh_absolute_deadline() {
     let result = read_startup_frame(reader, Instant::now() + Duration::from_millis(120));
     drip.join().unwrap();
     assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::TimedOut);
+}
+
+fn current_fd_limit() -> (libc::rlim_t, libc::rlim_t) {
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    assert_eq!(
+        unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) },
+        0
+    );
+    (limit.rlim_cur, limit.rlim_max)
+}
+#[test]
+fn descriptor_exhaustion_fails_closed_then_fresh_process_restarts() {
+    let parent_limit = current_fd_limit();
+    let runtime = TestDir::new("low-fd-restart");
+    let sentinel = runtime.0.join("unrelated-user-file");
+    fs::write(&sentinel, b"preserve").unwrap();
+    let daemon = Daemon::spawn_with_fd_limit(&runtime.0, Some(96));
+    daemon.await_ready();
+    let limits = fs::read_to_string(format!("/proc/{}/limits", daemon.pid())).unwrap();
+    let line = limits
+        .lines()
+        .find(|line| line.starts_with("Max open files"))
+        .unwrap();
+    let fields: Vec<_> = line.split_whitespace().collect();
+    assert_eq!(
+        &fields[3..5],
+        &["96", "96"],
+        "fault did not reach child resource limits"
+    );
+    // An acknowledged subscription witnesses a live usable daemon before the
+    // resource fault. Keep it open until after the failed child is reaped.
+    let mut stream = UnixStream::connect(&daemon.socket).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    stream
+        .set_write_timeout(Some(Duration::from_secs(1)))
+        .unwrap();
+    stream
+        .write_all(b"{\"version\":1,\"op\":\"subscribe\"}\n")
+        .unwrap();
+    let mut subscriber = BufReader::new(stream);
+    let initial = read_snapshot(&mut subscriber);
+    let mut clients = Vec::new();
+    for _ in 0..160 {
+        match UnixStream::connect(&daemon.socket) {
+            Ok(mut stream) => {
+                stream
+                    .set_write_timeout(Some(Duration::from_millis(100)))
+                    .unwrap();
+                let _ = stream.write_all(b"{");
+                clients.push(stream);
+            }
+            Err(_) => break, // The expected failing daemon can close admission.
+        }
+    }
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let status = loop {
+        if let Some(status) = daemon
+            .child
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .try_wait()
+            .unwrap()
+        {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "descriptor pressure did not produce bounded terminal failure; stderr: {}",
+            daemon.diagnostics()
+        );
+        thread::sleep(Duration::from_millis(2));
+    };
+    assert!(!status.success(), "resource exhaustion reported success");
+    assert!(
+        daemon.diagnostics().contains("os error 24"),
+        "expected Linux EMFILE, got: {}",
+        daemon.diagnostics()
+    );
+    assert!(
+        !daemon.socket.exists(),
+        "owned socket survived descriptor exhaustion"
+    );
+    let closed = read_startup_frame(
+        subscriber.into_inner(),
+        Instant::now() + Duration::from_secs(1),
+    );
+    assert!(
+        closed.is_ok()
+            || closed
+                .as_ref()
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::ConnectionReset),
+        "admitted subscriber did not close: {closed:?}"
+    );
+    assert_eq!(fs::read(&sentinel).unwrap(), b"preserve");
+    drop(clients);
+    drop(daemon); // Already reaped, releases retained fixture reservation.
+    assert_eq!(
+        current_fd_limit(),
+        parent_limit,
+        "parent resource limit changed"
+    );
+    // Manual isolated replacement, not an assertion that systemd was exercised.
+    let replacement = Daemon::start(&runtime.0);
+    let next: Snapshot = serde_json::from_slice(&request(
+        &replacement.socket,
+        b"{\"version\":1,\"op\":\"snapshot\"}\n",
+    ))
+    .unwrap();
+    assert_ne!(
+        initial.instance_id, next.instance_id,
+        "restart reused instance identity"
+    );
+    assert_eq!(fs::read(&sentinel).unwrap(), b"preserve");
+    replacement.stop();
 }
