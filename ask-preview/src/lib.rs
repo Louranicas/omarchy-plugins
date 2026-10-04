@@ -307,10 +307,18 @@ fn ppm(bytes: &[u8]) -> Result<Preview, Error> {
 }
 
 pub fn preview(selected: &Match, cancelled: &AtomicBool) -> Result<Preview, Error> {
+    preview_with_quota(selected, cancelled, &ACTIVE)
+}
+
+fn preview_with_quota(
+    selected: &Match,
+    cancelled: &AtomicBool,
+    active: &'static AtomicUsize,
+) -> Result<Preview, Error> {
     if cancelled.load(Ordering::Acquire) {
         return Err(Error::Cancelled);
     }
-    let _admission = admit(&ACTIVE)?;
+    let _admission = admit(active)?;
     let bytes = read_selection(selected, cancelled)?;
     let image = bytes.starts_with(b"\x89PNG\r\n\x1a\n")
         || bytes.starts_with(&[0xff, 0xd8, 0xff])
@@ -415,10 +423,12 @@ pub fn preview(selected: &Match, cancelled: &AtomicBool) -> Result<Preview, Erro
 #[cfg(test)]
 mod tests {
     use super::*;
-    pub(super) static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     #[test]
     fn real_image_and_pdf_decoders_return_bounded_raw_pixels() {
-        let _test_serial = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        static QUOTA: AtomicUsize = AtomicUsize::new(0);
+        let preview = |selected: &Match, cancelled: &AtomicBool| {
+            preview_with_quota(selected, cancelled, &QUOTA)
+        };
         let t = tempfile::tempdir().unwrap();
         for (name, bytes) in [
             (
@@ -446,7 +456,6 @@ mod tests {
     }
     #[test]
     fn malformed_pixel_envelopes_rejected() {
-        let _test_serial = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         for bytes in [
             b"P6\n99999999 2\n255\n".as_slice(),
             b"P6\n1 1\n255\nxx",
@@ -474,6 +483,10 @@ mod tests {
     }
     #[test]
     fn text_bounds_utf16_and_strips_nul() {
+        static QUOTA: AtomicUsize = AtomicUsize::new(0);
+        let preview = |selected: &Match, cancelled: &AtomicBool| {
+            preview_with_quota(selected, cancelled, &QUOTA)
+        };
         let t = tempfile::tempdir().unwrap();
         let p = t.path().join("text");
         fs::write(&p, format!("hello\0{}", "😀".repeat(13000))).unwrap();
@@ -487,7 +500,10 @@ mod tests {
     }
     #[test]
     fn selection_replacement_and_symlink_escape_refused() {
-        let _test_serial = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        static QUOTA: AtomicUsize = AtomicUsize::new(0);
+        let preview = |selected: &Match, cancelled: &AtomicBool| {
+            preview_with_quota(selected, cancelled, &QUOTA)
+        };
         let t = tempfile::tempdir().unwrap();
         let p = t.path().join("selected");
         fs::write(&p, b"before").unwrap();
@@ -501,7 +517,10 @@ mod tests {
     }
     #[test]
     fn oversized_and_binary_are_not_unbounded_text() {
-        let _test_serial = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        static QUOTA: AtomicUsize = AtomicUsize::new(0);
+        let preview = |selected: &Match, cancelled: &AtomicBool| {
+            preview_with_quota(selected, cancelled, &QUOTA)
+        };
         let t = tempfile::tempdir().unwrap();
         let p = t.path().join("data");
         File::create(&p)
@@ -520,7 +539,6 @@ mod tests {
     }
     #[test]
     fn decoder_plan_has_no_home_network_or_writable_host_bind() {
-        let _test_serial = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let t = tempfile::tempdir().unwrap();
         let p = t.path().join("input");
         fs::write(&p, b"fixture").unwrap();
@@ -532,7 +550,6 @@ mod tests {
     }
     #[test]
     fn real_sandbox_cannot_see_home_or_write_input() {
-        let _test_serial = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let t = tempfile::tempdir().unwrap();
         let p = t.path().join("input");
         fs::write(&p, b"unchanged").unwrap();
@@ -567,9 +584,6 @@ mod containment_tests {
     }
     #[test]
     fn public_preview_refuses_third_job_before_reading_user_file() {
-        let _serial = super::tests::TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
         let _a = admit(&ACTIVE).unwrap();
         let _b = admit(&ACTIVE).unwrap();
         let selected = Match {
@@ -588,6 +602,25 @@ mod containment_tests {
         assert_eq!(
             preview(&selected, &AtomicBool::new(false)),
             Err(Error::Busy)
+        );
+        // Content checks must remain independent even while the public quota is full.
+        static ISOLATED: AtomicUsize = AtomicUsize::new(0);
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("text");
+        fs::write(&path, "isolated preview").unwrap();
+        let selected = Match {
+            score: 0,
+            path: path.clone(),
+            root: temporary.path().into(),
+            root_identity: identity(&fs::metadata(temporary.path()).unwrap()),
+            identity: identity(&fs::metadata(path).unwrap()),
+        };
+        assert_eq!(
+            preview_with_quota(&selected, &AtomicBool::new(false), &ISOLATED),
+            Ok(Preview::Text {
+                text: "isolated preview".into(),
+                truncated: false
+            })
         );
     }
     #[test]
