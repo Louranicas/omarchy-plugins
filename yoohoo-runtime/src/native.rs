@@ -57,7 +57,16 @@ impl Native {
         now: u64,
         deadline: Instant,
     ) -> Result<(), Error> {
-        let result = self.sync_inner(runtime, now, deadline);
+        self.synchronize_with_clock(runtime, now, deadline, Instant::now)
+    }
+    fn synchronize_with_clock(
+        &mut self,
+        runtime: &mut Runtime,
+        now: u64,
+        deadline: Instant,
+        clock: impl FnMut() -> Instant,
+    ) -> Result<(), Error> {
+        let result = self.sync_inner(runtime, now, deadline, clock);
         if result.is_err() {
             self.snapshots.invalidate();
             self.identities.clear();
@@ -72,10 +81,11 @@ impl Native {
         runtime: &mut Runtime,
         now: u64,
         deadline: Instant,
+        mut clock: impl FnMut() -> Instant,
     ) -> Result<(), Error> {
-        let remaining = || {
+        let mut remaining = || {
             deadline
-                .checked_duration_since(Instant::now())
+                .checked_duration_since(clock())
                 .filter(|d| !d.is_zero())
                 .ok_or(Error::Stale)
         };
@@ -513,6 +523,84 @@ mod refresh_tests {
         let mut request = [0; 64];
         assert!(peer.read(&mut request).unwrap() > 0);
         peer.write_all(reply).unwrap();
+    }
+    #[test]
+    fn second_snapshot_query_cannot_renew_expired_attempt() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        struct Server {
+            stop: Arc<AtomicBool>,
+            worker: Option<thread::JoinHandle<()>>,
+        }
+        impl Drop for Server {
+            fn drop(&mut self) {
+                self.stop.store(true, Ordering::Release);
+                self.worker.take().unwrap().join().unwrap();
+            }
+        }
+        for elapsed in [Duration::from_millis(100), Duration::from_millis(101)] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+            std::fs::create_dir_all(dir.path().join("hypr/test")).unwrap();
+            let listener = UnixListener::bind(dir.path().join("hypr/test/.socket.sock")).unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let event = UnixListener::bind(dir.path().join("hypr/test/.socket2.sock")).unwrap();
+            let endpoint = Endpoint::discover(dir.path(), "test", std::process::id()).unwrap();
+            let mut native = Native::connect(endpoint, [9; 16]).unwrap();
+            let (_events, _) = event.accept().unwrap();
+            let stop = Arc::new(AtomicBool::new(false));
+            let queries = Arc::new(AtomicUsize::new(0));
+            let (halt, count) = (stop.clone(), queries.clone());
+            let server = Server {
+                stop,
+                worker: Some(thread::spawn(move || {
+                    while !halt.load(Ordering::Acquire) {
+                        if let Ok((mut peer, _)) = listener.accept() {
+                            peer.set_read_timeout(Some(Duration::from_millis(100)))
+                                .unwrap();
+                            peer.set_write_timeout(Some(Duration::from_millis(100)))
+                                .unwrap();
+                            let mut request = [0; 64];
+                            if let Ok(n) = peer.read(&mut request)
+                                && n > 0
+                            {
+                                count.fetch_add(1, Ordering::Release);
+                                let reply: &[u8] = if &request[..n] == b"j/clients" {
+                                    b"[]"
+                                } else {
+                                    b"{}"
+                                };
+                                let _ = peer.write_all(reply);
+                            }
+                        }
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                })),
+            };
+            let mut runtime = Runtime::empty().unwrap();
+            let start = Instant::now();
+            let mut samples = 0;
+            let result = native.synchronize_with_clock(
+                &mut runtime,
+                1,
+                start + Duration::from_millis(100),
+                || {
+                    samples += 1;
+                    if samples == 1 { start } else { start + elapsed }
+                },
+            );
+            assert!(
+                result.is_err(),
+                "expired attempt renewed second query budget"
+            );
+            assert_eq!(samples, 2, "both budget checks must execute");
+            assert_eq!(
+                queries.load(Ordering::Acquire),
+                1,
+                "expired second query submitted"
+            );
+            assert!(runtime.view().stale);
+            drop(server);
+        }
     }
     fn scenario(fault: &str) {
         let dir = tempfile::tempdir().unwrap();
