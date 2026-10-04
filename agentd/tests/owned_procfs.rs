@@ -256,7 +256,7 @@ fn owned_capture_replay_matches_daemon_cli_and_observes_exit() {
         thread::sleep(Duration::from_millis(5));
     }
     let end = Instant::now() + BUDGET;
-    loop {
+    let witnessed = loop {
         let snapshot = cli(&runtime.0, &["list", "--json"]);
         let found: Vec<_> = snapshot
             .agents
@@ -269,14 +269,23 @@ fn owned_capture_replay_matches_daemon_cli_and_observes_exit() {
                     && a.harness == expected.harness
                     && a.cwd == expected.cwd));
             }
-            break;
+            let owned: Vec<_> = found
+                .iter()
+                .filter(|a| pids.contains(&a.id.pid))
+                .map(|a| a.id)
+                .collect();
+            assert!(
+                !owned.is_empty(),
+                "fixture requires at least one actually visible owned root; both harnesses may be collapsed under existing ancestry"
+            );
+            break owned;
         }
         assert!(
             Instant::now() < end,
             "daemon did not observe ancestry-resolved process roots"
         );
         thread::sleep(Duration::from_millis(10));
-    }
+    };
     for child in &mut capture.children {
         reap(&child.stop());
     }
@@ -285,7 +294,7 @@ fn owned_capture_replay_matches_daemon_cli_and_observes_exit() {
         if cli(&runtime.0, &["list", "--json"])
             .agents
             .iter()
-            .all(|a| !pids.contains(&a.id.pid))
+            .all(|a| !witnessed.contains(&a.id))
         {
             break;
         }
