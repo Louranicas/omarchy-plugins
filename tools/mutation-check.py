@@ -8,9 +8,15 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'target' / 'mutation-evidence'
+EXPECTED_FAILURE = {
+    'vimarchy-reply-fence': ['panicked at vimarchy-runtime/tests/presenter_link.rs:', '\nmutation 0\n'],
+    'ask-runtime-instance': ['panicked at ask-runtime/tests/protocol.rs:', 'left: Ok(())', 'right: Err(Stale)'],
+    'yoohoo-revision-floor': ['panicked at yoohoo-runtime/tests/presenter_refresh.rs:', 'successful prior revision cannot roll back'],
+}
 CASES = [
     ('vimarchy-reply-fence', 'vimarchy-runtime/src/presenter.rs',
      '|| reply.auth != self.auth', '|| false',
@@ -25,19 +31,29 @@ CASES = [
 
 
 def run(args, cwd, env, log):
-    # Kill the entire owned process group on timeout, including fixture children.
+    # Linux waitid leaves the leader unreaped, reserving its PID while we clean
+    # its process group. Descendants that deliberately escape it are out of scope.
     with log.open('w') as stream:
         child = subprocess.Popen(args, cwd=cwd, env=env, stdout=stream,
                                  stderr=subprocess.STDOUT, start_new_session=True)
+        deadline = time.monotonic() + 300
         try:
-            return child.wait(timeout=300)
-        except BaseException:
+            while os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('command exceeded five-minute budget')
+                if os.fstat(stream.fileno()).st_size > 8 * 1024 * 1024:
+                    raise RuntimeError('command exceeded 8 MiB log budget')
+                time.sleep(0.025)
+            if os.fstat(stream.fileno()).st_size > 8 * 1024 * 1024:
+                raise RuntimeError('command exceeded 8 MiB log budget')
+        finally:
             try:
                 os.killpg(child.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-            child.wait()
-            raise
+            # A cleanup timeout is an infrastructure failure, never a killed mutant.
+            code = child.wait(timeout=5)
+        return code
 
 
 def main():
@@ -77,7 +93,8 @@ def main():
                     raise RuntimeError(f'{name}: compilation failure is not a killed mutant')
                 code = run(args + ['--', '--exact'], copy, env, OUT / f'{name}-mutant.log')
                 output = (OUT / f'{name}-mutant.log').read_text()
-                if code != 101 or f'test {test} ... FAILED' not in output:
+                if (code != 101 or f'test {test} ... FAILED' not in output
+                        or not all(mark in output for mark in EXPECTED_FAILURE[name])):
                     raise RuntimeError(f'{name}: expected test did not kill the compiled mutant')
                 results.append({'name': name, 'source': relative,
                                 'sha256': hashlib.sha256(original.encode()).hexdigest(),
@@ -90,4 +107,7 @@ def main():
 
 
 if __name__ == '__main__':
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt(f'interrupted by signal {signum}')
+    signal.signal(signal.SIGTERM, interrupted)
     main()
