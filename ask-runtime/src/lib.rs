@@ -1,4 +1,5 @@
 //! Serialized ACP adapter. Provider-supplied metadata never grants local authority.
+pub mod provider;
 use ask_core::launch::{FrozenLaunch, Harness};
 use ask_core::permission::{Kind, Offered, Outcome};
 use ask_core::session::{ConfigOption, Effect, Session, Tool, ToolStatus};

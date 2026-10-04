@@ -127,33 +127,91 @@ fn main() -> glib::ExitCode {
             glib::ExitCode::FAILURE
         };
     }
-    if std::env::var("OMARCHY_TEST_ISOLATED_DISPLAY").as_deref() != Ok("yes")
-        || args.len() != 3
-        || args[1] != "--fixture-ui"
-    {
-        eprintln!("usage: isolated display required; ask-native --fixture-ui EXPLICIT_ROOT");
+    let fixture_mode = args.get(1).map(String::as_str) == Some("--fixture-ui");
+    let production_mode = args.get(1).map(String::as_str) == Some("--provider-config");
+    let check_mode = args.get(1).map(String::as_str) == Some("--check-provider");
+    if args.len() != 3 || !(fixture_mode || production_mode || check_mode) {
+        eprintln!(
+            "usage: ask-native --provider-config PROFILE | --check-provider PROFILE | --fixture-ui EXPLICIT_ROOT"
+        );
         return glib::ExitCode::FAILURE;
     }
-    let root = PathBuf::from(&args[2]);
-    if !root.is_absolute() || !root.is_dir() {
-        eprintln!("explicit absolute fixture root required");
+    if fixture_mode && std::env::var("OMARCHY_TEST_ISOLATED_DISPLAY").as_deref() != Ok("yes") {
+        eprintln!("fixture mode requires an isolated display");
         return glib::ExitCode::FAILURE;
     }
-    let executable = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(_) => return glib::ExitCode::FAILURE,
+    // Production sessions require the existing authenticated presenter handshake.
+    // A profile never grants keyboard, focus or durable approval authority.
+    if production_mode && std::env::var_os("OMARCHY_MODAL_NAMESPACE").is_none() {
+        eprintln!("managed presentation required for configured provider");
+        return glib::ExitCode::FAILURE;
+    }
+    let (launch, environment, provider_label, preflight) = if fixture_mode {
+        let root = PathBuf::from(&args[2]);
+        if !root.is_absolute() || !root.is_dir() {
+            eprintln!("explicit absolute fixture root required");
+            return glib::ExitCode::FAILURE;
+        }
+        let executable = match std::env::current_exe() {
+            Ok(p) => p,
+            Err(_) => return glib::ExitCode::FAILURE,
+        };
+        (
+            FrozenLaunch {
+                harness: Harness::Codex,
+                cwd: root,
+                command: LaunchCommand::new(vec![
+                    executable.to_string_lossy().into_owned(),
+                    "--fixture-provider".into(),
+                ])
+                .unwrap(),
+                model: None,
+                reasoning: None,
+            },
+            vec![],
+            "fixture provider".to_owned(),
+            None,
+        )
+    } else {
+        let profile =
+            match ask_runtime::provider::ProviderProfile::read(std::path::Path::new(&args[2])) {
+                Ok(profile) => profile,
+                Err(error) => {
+                    eprintln!("provider profile rejected: {error:?}");
+                    return glib::ExitCode::FAILURE;
+                }
+            };
+        let preflight = match profile.preflight() {
+            Ok(checked) => checked,
+            Err(error) => {
+                eprintln!("provider unavailable: {error:?}");
+                return glib::ExitCode::FAILURE;
+            }
+        };
+        if check_mode {
+            println!("{}", profile.redacted_status());
+            return glib::ExitCode::SUCCESS;
+        }
+        let environment = match profile.environment(|name| std::env::var_os(name)) {
+            Ok(environment) => environment,
+            Err(error) => {
+                eprintln!("provider environment rejected: {error:?}");
+                return glib::ExitCode::FAILURE;
+            }
+        };
+        let label = format!(
+            "{} · authentication not checked",
+            profile.launch().harness.name()
+        );
+        (
+            profile.launch().clone(),
+            environment,
+            label,
+            Some(preflight),
+        )
     };
-    let launch = FrozenLaunch {
-        harness: Harness::Codex,
-        cwd: root.clone(),
-        command: LaunchCommand::new(vec![
-            executable.to_string_lossy().into_owned(),
-            "--fixture-provider".into(),
-        ])
-        .unwrap(),
-        model: None,
-        reasoning: None,
-    };
+    let root = launch.cwd.clone();
+    let project_label = format!("Project: {}", root.display());
     let parent = if std::env::var_os("OMARCHY_MODAL_NAMESPACE").is_some() {
         match modal_runtime::readiness::ParentWatch::from_environment() {
             Ok(watch) => Some(watch),
@@ -165,10 +223,29 @@ fn main() -> glib::ExitCode {
     } else {
         None
     };
-    let backend = Rc::new(RefCell::new(Some(Handle::start_guarded(launch, parent))));
+    if preflight
+        .as_ref()
+        .is_some_and(|checked| checked.recheck().is_err())
+    {
+        eprintln!("provider paths changed after preflight");
+        return glib::ExitCode::FAILURE;
+    }
+    let handle = if let Some(preflight) = preflight {
+        let Some(parent) = parent else {
+            return glib::ExitCode::FAILURE;
+        };
+        Handle::start_pending_guarded(launch, environment, parent, preflight)
+    } else {
+        Handle::start_with_environment_guarded(launch, environment, parent)
+    };
+    let backend = Rc::new(RefCell::new(Some(handle)));
     let files = Rc::new(RefCell::new(Some(files::Handle::start(root))));
     let app = gtk::Application::builder()
-        .application_id("org.omarchy.AskFixture")
+        .application_id(if fixture_mode {
+            "org.omarchy.AskFixture"
+        } else {
+            "org.omarchy.Ask"
+        })
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
         .build();
     let worker = backend.clone();
@@ -181,7 +258,11 @@ fn main() -> glib::ExitCode {
         drop(backend_ref);
         let window = gtk::ApplicationWindow::builder()
             .application(app)
-            .title("Ask · native fixture")
+            .title(if fixture_mode {
+                "Ask · native fixture"
+            } else {
+                "Ask"
+            })
             .default_width(960)
             .default_height(640)
             .build();
@@ -198,16 +279,21 @@ fn main() -> glib::ExitCode {
         heading.add_css_class("title-1");
         heading.set_xalign(0.0);
         column.append(&heading);
-        let status = gtk::Label::new(Some("Starting fixture agent…"));
+        let status = gtk::Label::new(Some("Starting provider…"));
         status.set_wrap(true);
         status.set_xalign(0.0);
         status.update_property(&[gtk::accessible::Property::Label("Agent session status")]);
         column.append(&status);
-        let policy = gtk::Label::new(Some(
-            "Interactive approval · fixture provider · no stored auto-policy",
-        ));
+        let policy = gtk::Label::new(Some(&format!(
+            "Interactive approval · {provider_label} · no stored auto-policy"
+        )));
         policy.set_xalign(0.0);
         column.append(&policy);
+        let project = gtk::Label::new(Some(&project_label));
+        project.set_xalign(0.0);
+        project.set_wrap(true);
+        project.set_selectable(true);
+        column.append(&project);
         let transcript = Rc::new(RefCell::new(transcript::Transcript::new()));
         let scroll = gtk::ScrolledWindow::builder()
             .vexpand(true)
@@ -254,7 +340,7 @@ fn main() -> glib::ExitCode {
         }
         column.append(&buttons);
         let file_entry = gtk::Entry::builder()
-            .placeholder_text("Search only the explicit fixture root")
+            .placeholder_text("Search only the configured project directory")
             .build();
         file_entry.update_property(&[gtk::accessible::Property::Label("Scoped file query")]);
         let search = gtk::Button::with_label("Search files");
@@ -461,8 +547,12 @@ fn main() -> glib::ExitCode {
         }
         {
             let alive = alive.clone();
+            let closing_worker = worker.clone();
             window.connect_close_request(move |_| {
                 alive.set(false);
+                if let Some(worker) = closing_worker.borrow().as_ref() {
+                    worker.stop();
+                }
                 glib::Propagation::Proceed
             });
         }
@@ -530,6 +620,7 @@ fn main() -> glib::ExitCode {
             let column = column.clone();
             let status = status.clone();
             let presentation = presentation.clone();
+            let admission_worker = worker.clone();
             glib::timeout_add_local(Duration::from_millis(10), move || {
                 if !presentation.check_lifetime() || !alive.get() {
                     return glib::ControlFlow::Break;
@@ -537,6 +628,14 @@ fn main() -> glib::ExitCode {
                 match grant_rx.try_recv() {
                     Ok(true) => {
                         if window.is_mapped() {
+                            if !admission_worker
+                                .borrow()
+                                .as_ref()
+                                .is_some_and(Handle::admit_after_managed_grant)
+                            {
+                                window.close();
+                                return glib::ControlFlow::Break;
+                            }
                             authority.set(true);
                             if let Some(surface) = window.surface() {
                                 surface.set_input_region(None);
@@ -599,24 +698,25 @@ fn main() -> glib::ExitCode {
                     let lifetime = ui_presentation.clone();
                     tail_follow.schedule(move || lifetime.check_lifetime());
                     transcript.borrow_mut().update(&view.transcript);
-                    if view
-                        .transcript
-                        .iter()
-                        .any(|(_, body)| body.as_str() == "Fixture completed · Unicode 日本語 😀")
+                    if fixture_mode
+                        && view.transcript.iter().any(|(_, body)| {
+                            body.as_str() == "Fixture completed · Unicode 日本語 😀"
+                        })
                     {
                         println!("fixture_answer_rendered=true");
                     }
-                    if view
-                        .transcript
-                        .iter()
-                        .any(|(_, body)| body.as_str() == "Tool declined; no resource was read.")
+                    if fixture_mode
+                        && view.transcript.iter().any(|(_, body)| {
+                            body.as_str() == "Tool declined; no resource was read."
+                        })
                     {
                         println!("fixture_denied_rendered=true");
                     }
-                    if view
-                        .transcript
-                        .iter()
-                        .any(|(_, body)| body.as_str() == "Tool cancelled; no option selected.")
+                    if fixture_mode
+                        && view
+                            .transcript
+                            .iter()
+                            .any(|(_, body)| body.as_str() == "Tool cancelled; no option selected.")
                     {
                         println!("fixture_cancelled_rendered=true");
                     }
@@ -704,7 +804,11 @@ fn main() -> glib::ExitCode {
                     *displayed_permissions.borrow_mut() = view.permissions.clone();
                 }
                 if view.pinned {
-                    ui_window.set_title(Some("Ask · pinned fixture conversation"));
+                    ui_window.set_title(Some(if fixture_mode {
+                        "Ask · pinned fixture conversation"
+                    } else {
+                        "Ask · pinned conversation"
+                    }));
                     pin.set_sensitive(false)
                 }
                 if view.attention {
@@ -804,12 +908,20 @@ fn main() -> glib::ExitCode {
         if std::env::var_os("OMARCHY_MODAL_NAMESPACE").is_none() {
             focus_composer.grab_focus();
         }
-        println!("gtk_fixture_mapped=true installed_desktop_acceptance=false");
-        let app = app.clone();
-        glib::timeout_add_local_once(Duration::from_secs(8), move || {
-            println!("fixture_lifecycle=closing");
-            app.quit();
-        });
+        if fixture_mode {
+            println!("gtk_fixture_mapped=true installed_desktop_acceptance=false");
+        } else {
+            println!(
+                "configured_provider_surface_presented=true installed_desktop_acceptance=false"
+            );
+        }
+        if fixture_mode {
+            let app = app.clone();
+            glib::timeout_add_local_once(Duration::from_secs(8), move || {
+                println!("fixture_lifecycle=closing");
+                app.quit();
+            });
+        }
     });
     let result = app.run_with_args::<&str>(&[]);
     let clean = backend.borrow_mut().take().is_some_and(Handle::finish);

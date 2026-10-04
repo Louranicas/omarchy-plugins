@@ -50,6 +50,7 @@ pub struct Handle {
     pub commands: SyncSender<Command>,
     pub views: Latest<View>,
     stop: Arc<AtomicBool>,
+    admission: Arc<AtomicBool>,
     join: Option<JoinHandle<bool>>,
 }
 impl Handle {
@@ -60,18 +61,59 @@ impl Handle {
         launch: FrozenLaunch,
         parent: Option<modal_runtime::readiness::ParentWatch>,
     ) -> Self {
+        Self::start_with_environment_guarded(launch, vec![], parent)
+    }
+    pub fn start_with_environment_guarded(
+        launch: FrozenLaunch,
+        environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+        parent: Option<modal_runtime::readiness::ParentWatch>,
+    ) -> Self {
+        Self::start_inner(launch, environment, parent, None)
+    }
+    /// Trusted UI calls admission only after its matching authenticated active ACK.
+    /// The supplied preflight must describe this exact frozen launch.
+    pub fn start_pending_guarded(
+        launch: FrozenLaunch,
+        environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+        parent: modal_runtime::readiness::ParentWatch,
+        preflight: ask_runtime::provider::Preflight,
+    ) -> Self {
+        Self::start_inner(launch, environment, Some(parent), Some(preflight))
+    }
+    fn start_inner(
+        launch: FrozenLaunch,
+        environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+        parent: Option<modal_runtime::readiness::ParentWatch>,
+        preflight: Option<ask_runtime::provider::Preflight>,
+    ) -> Self {
+        let admission = Arc::new(AtomicBool::new(preflight.is_none()));
+        let pending = LaunchEnvironment {
+            values: environment,
+            preflight,
+            admission: admission.clone(),
+        };
         let (tx, rx) = mpsc::sync_channel(16);
         let views = Latest::default();
         let output = views.clone();
         let stop = Arc::new(AtomicBool::new(false));
         let ending = stop.clone();
-        let join = thread::spawn(move || run(launch, rx, output, ending, parent));
+        let join = thread::spawn(move || run(launch, pending, rx, output, ending, parent));
         Self {
             commands: tx,
             views,
             stop,
+            admission,
             join: Some(join),
         }
+    }
+    pub fn admit_after_managed_grant(&self) -> bool {
+        if self.stop.load(Ordering::Acquire)
+            || self.join.as_ref().is_none_or(|join| join.is_finished())
+        {
+            return false;
+        }
+        self.admission.store(true, Ordering::Release);
+        true
     }
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Release)
@@ -88,20 +130,54 @@ impl Drop for Handle {
         self.stop()
     }
 }
+struct LaunchEnvironment {
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    preflight: Option<ask_runtime::provider::Preflight>,
+    admission: Arc<AtomicBool>,
+}
 fn run(
     launch: FrozenLaunch,
+    environment: LaunchEnvironment,
     commands: Receiver<Command>,
     views: Latest<View>,
     stop: Arc<AtomicBool>,
     parent: Option<modal_runtime::readiness::ParentWatch>,
 ) -> bool {
     let parent_alive = || parent.as_ref().is_none_or(|watch| watch.check().is_ok());
-    if !parent_alive() {
+    let admission_deadline = Instant::now() + Duration::from_secs(5);
+    while !environment.admission.load(Ordering::Acquire) {
+        if stop.load(Ordering::Acquire) || !parent_alive() || Instant::now() >= admission_deadline {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    if stop.load(Ordering::Acquire) || !parent_alive() || Instant::now() >= admission_deadline {
+        return true;
+    }
+    if environment
+        .preflight
+        .as_ref()
+        .is_some_and(|checked| checked.recheck().is_err())
+    {
+        views.publish(View {
+            revision: 1,
+            ready: false,
+            busy: false,
+            pinned: false,
+            transcript: vec![],
+            permissions: vec![],
+            status: "Provider paths changed before launch".into(),
+            ack: None,
+            attention: false,
+        });
+        return false;
+    }
+    if stop.load(Ordering::Acquire) || !parent_alive() || Instant::now() >= admission_deadline {
         return true;
     }
     let origin = Instant::now();
     let now = || origin.elapsed().as_millis() as u64;
-    let mut worker = match Worker::spawn(launch, vec![], 0) {
+    let mut worker = match Worker::spawn(launch, environment.values, 0) {
         Ok(w) => w,
         Err(e) => {
             views.publish(View {
@@ -122,7 +198,7 @@ fn run(
     let mut permissions = Vec::<Permission>::new();
     let mut revision = 0u64;
     let mut ack = None;
-    let mut status = "Starting fixture agent…".to_owned();
+    let mut status = "Starting provider…".to_owned();
     let mut dirty = true;
     let mut terminal = false;
     let mut attention = false;
