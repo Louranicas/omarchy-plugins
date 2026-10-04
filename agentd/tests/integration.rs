@@ -1,12 +1,16 @@
 use agentd::model::{ActivityState, CwdState, Harness, Snapshot};
+use omarchy_process_runner::{CleanupReceipt, CleanupState, ReapReservation};
 use serde::Deserialize;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, symlink};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
+use std::rc::Rc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -32,56 +36,184 @@ impl Drop for TestDir {
 }
 
 struct Daemon {
-    child: Child,
+    child: RefCell<Option<Child>>,
+    reservation: Option<ReapReservation>,
+    cleanup: Rc<RefCell<Option<CleanupReceipt>>>,
     socket: PathBuf,
+    diagnostics: PathBuf,
 }
-
 impl Daemon {
-    fn start(runtime: &Path) -> Self {
+    fn spawn(runtime: &Path) -> Self {
+        let reservation = ReapReservation::reserve().unwrap();
+        let diagnostics = runtime.join(format!("daemon-test-stderr-{}", monotonic_suffix()));
+        let stderr = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&diagnostics)
+            .unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_agentd"))
             .arg("daemon")
             .env("XDG_RUNTIME_DIR", runtime)
             .env("XDG_STATE_HOME", runtime.join("state"))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(stderr)
             .spawn()
             .unwrap();
-        let socket = runtime.join("agentd.sock");
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let mut ready = false;
-        while Instant::now() < deadline {
-            if let Ok(metadata) = fs::symlink_metadata(&socket)
-                && metadata.permissions().mode() & 0o777 == 0o600
-                && UnixStream::connect(&socket).is_ok()
-            {
-                ready = true;
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
+        Self {
+            child: RefCell::new(Some(child)),
+            reservation: Some(reservation),
+            cleanup: Rc::new(RefCell::new(None)),
+            socket: runtime.join("agentd.sock"),
+            diagnostics,
         }
-        assert!(ready, "daemon socket did not become ready");
-        let mode = fs::symlink_metadata(&socket).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
-        Self { child, socket }
     }
-
-    fn stop(mut self) {
-        let result = unsafe { libc::kill(self.child.id() as libc::pid_t, libc::SIGTERM) };
-        assert_eq!(result, 0);
-        let deadline = Instant::now() + Duration::from_secs(5);
+    fn start(runtime: &Path) -> Self {
+        // Custody is established before startup assertions can unwind.
+        let daemon = Self::spawn(runtime);
+        daemon.await_ready();
+        daemon
+    }
+    fn pid(&self) -> u32 {
+        self.child.borrow().as_ref().unwrap().id()
+    }
+    fn diagnostics(&self) -> String {
+        let mut bytes = Vec::new();
+        if let Ok(file) = fs::File::open(&self.diagnostics) {
+            let _ = file.take(8192).read_to_end(&mut bytes);
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+    fn assert_alive(&self) {
+        let status = self
+            .child
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .try_wait()
+            .unwrap();
+        assert!(
+            status.is_none(),
+            "daemon exited before test completed: {status:?}; stderr: {}",
+            self.diagnostics()
+        );
+    }
+    fn await_ready(&self) {
+        let deadline = Instant::now() + Duration::from_secs(3);
         loop {
-            if let Some(status) = self.child.try_wait().unwrap() {
-                assert!(status.success(), "daemon did not exit 0: {status}");
+            self.assert_alive();
+            if let Ok(metadata) = fs::symlink_metadata(&self.socket)
+                && metadata.permissions().mode() & 0o777 == 0o600
+                && let Ok(mut stream) = UnixStream::connect(&self.socket)
+            {
+                // Connect success is only kernel backlog admission. An actual
+                // snapshot proves the daemon has accepted and served a request.
+                let remaining = deadline
+                    .checked_duration_since(Instant::now())
+                    .expect("startup deadline");
+                stream.set_write_timeout(Some(remaining)).unwrap();
+                stream
+                    .write_all(b"{\"version\":1,\"op\":\"snapshot\"}\n")
+                    .unwrap();
+                let frame = read_startup_frame(stream, deadline).expect("startup snapshot read");
+                let _: Snapshot = serde_json::from_slice(&frame).unwrap();
                 break;
             }
             assert!(
                 Instant::now() < deadline,
-                "daemon did not stop within five seconds"
+                "daemon socket did not become ready; stderr: {}",
+                self.diagnostics()
             );
             thread::sleep(Duration::from_millis(10));
         }
+    }
+    fn stop(mut self) {
+        self.assert_alive();
+        assert_eq!(
+            unsafe { libc::kill(self.pid() as libc::pid_t, libc::SIGTERM) },
+            0
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = self
+                .child
+                .borrow_mut()
+                .as_mut()
+                .unwrap()
+                .try_wait()
+                .unwrap()
+            {
+                assert!(
+                    status.success(),
+                    "daemon did not exit 0: {status}; stderr: {}",
+                    self.diagnostics()
+                );
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "daemon did not stop within five seconds; stderr: {}",
+                self.diagnostics()
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        self.child.get_mut().take();
+        self.reservation.take();
         assert!(!self.socket.exists(), "daemon socket survived shutdown");
+    }
+}
+impl Drop for Daemon {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.get_mut().take() {
+            let permit = self.reservation.take().unwrap();
+            let receipt = match child.try_wait() {
+                Ok(Some(_)) => {
+                    drop(permit);
+                    return;
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    permit.handoff(child, ())
+                }
+                Err(_) => permit.quarantine(child, ()),
+            };
+            *self.cleanup.borrow_mut() = Some(receipt);
+        }
+    }
+}
+
+fn read_startup_frame(mut stream: UnixStream, deadline: Instant) -> std::io::Result<Vec<u8>> {
+    let mut frame = Vec::new();
+    loop {
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|d| !d.is_zero())
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::TimedOut, "startup deadline"))?;
+        stream.set_read_timeout(Some(remaining))?;
+        let mut chunk = [0; 4096];
+        let n = match stream.read(&mut chunk) {
+            Ok(n) => n,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => continue,
+            Err(error) => return Err(error),
+        };
+        if Instant::now() >= deadline {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "startup deadline",
+            ));
+        }
+        if n == 0 {
+            return Ok(frame);
+        }
+        if frame.len() + n > 1024 * 1024 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "startup snapshot limit",
+            ));
+        }
+        frame.extend_from_slice(&chunk[..n]);
     }
 }
 
@@ -906,33 +1038,115 @@ fn capability_path_matches_effective_execute_access() {
     assert!(config.join("hooks.json").is_file());
 }
 
+fn named_client_count(pid: u32) -> usize {
+    fs::read_dir(format!("/proc/{pid}/task"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|task| {
+            fs::read_to_string(task.path().join("comm"))
+                .is_ok_and(|name| name.trim_end() == "agentd-client")
+        })
+        .count()
+}
+fn assert_flood_bounds(daemon: &Daemon, base_fds: usize) {
+    daemon.assert_alive();
+    assert!(
+        daemon_serving_task_count(daemon.pid()) <= 66,
+        "more than 64 workers admitted"
+    );
+    assert!(
+        daemon_resource_count(daemon.pid(), "fd") <= base_fds + 136,
+        "client descriptor ceiling exceeded"
+    );
+}
+fn wait_for_admission(daemon: &Daemon, base_fds: usize) {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        assert_flood_bounds(daemon, base_fds);
+        if named_client_count(daemon.pid()) > 0 {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no named client worker admitted; stderr: {}",
+            daemon.diagnostics()
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
+}
+fn wait_for_empty_clients(daemon: &Daemon, base_fds: usize) {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        assert_flood_bounds(daemon, base_fds);
+        if named_client_count(daemon.pid()) == 0
+            && daemon_serving_task_count(daemon.pid()) <= 2
+            && daemon_resource_count(daemon.pid(), "fd") <= base_fds + 2
+        {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "client cleanup deadline; stderr: {}",
+            daemon.diagnostics()
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
+}
+fn partial_client(daemon: &Daemon) -> UnixStream {
+    let mut stream = UnixStream::connect(&daemon.socket).unwrap();
+    stream
+        .set_write_timeout(Some(Duration::from_secs(1)))
+        .unwrap();
+    stream.write_all(b"{").unwrap();
+    stream
+}
 #[test]
 fn connection_flood_is_bounded_and_shutdown_cancels_incomplete_requests() {
     let runtime = TestDir::new("admission-budget");
     let daemon = Daemon::start(&runtime.0);
-    thread::sleep(Duration::from_millis(30));
-    let base_fds = daemon_resource_count(daemon.child.id(), "fd");
-    let mut clients = Vec::new();
-    for _ in 0..160 {
+    let base_fds = daemon_resource_count(daemon.pid(), "fd");
+    wait_for_empty_clients(&daemon, base_fds);
+    let mut clients = vec![partial_client(&daemon)];
+    wait_for_admission(&daemon, base_fds);
+    for _ in 1..160 {
+        // A peer can be refused at the ceiling; only successful writes remain
+        // potential incomplete requests, never proof that they were admitted.
         let mut stream = UnixStream::connect(&daemon.socket).unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
         let _ = stream.write_all(b"{");
         clients.push(stream);
-        assert!(
-            daemon_serving_task_count(daemon.child.id()) <= 66,
-            "more than 64 workers admitted"
-        );
-        // Each worker has a serving FD and a cancellation FD, plus one accepted
-        // socket and small scanner transients. No unbounded FD/thread growth.
-        assert!(daemon_resource_count(daemon.child.id(), "fd") <= base_fds + 136);
+        assert_flood_bounds(&daemon, base_fds);
     }
-    assert!(
-        daemon_serving_task_count(daemon.child.id()) > 2,
-        "probe never admitted clients"
+    // Requests may legitimately expire during a slow flood. Do not require a
+    // point-in-time worker after it. Drain, then witness one fresh incomplete
+    // peer so shutdown cancellation cannot pass with an empty workload.
+    drop(clients);
+    wait_for_empty_clients(&daemon, base_fds);
+    let mut pending = partial_client(&daemon);
+    wait_for_admission(&daemon, base_fds);
+    pending.set_nonblocking(true).unwrap();
+    assert_eq!(
+        pending.read(&mut [0]).unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock,
+        "fresh request already completed before shutdown"
     );
     let start = Instant::now();
     daemon.stop();
     assert!(start.elapsed() < Duration::from_secs(2));
-    drop(clients);
+    pending.set_nonblocking(false).unwrap();
+    pending
+        .set_read_timeout(Some(Duration::from_secs(1)))
+        .unwrap();
+    let response = pending.read(&mut [0]);
+    assert!(
+        matches!(response, Ok(0))
+            || response
+                .as_ref()
+                .is_err_and(|e| e.kind() == std::io::ErrorKind::ConnectionReset),
+        "shutdown did not cancel the pending request; natural expiry emitted an error frame: {response:?}"
+    );
 }
 
 #[test]
@@ -940,7 +1154,7 @@ fn idle_and_byte_drip_clients_expire_then_snapshot_service_recovers() {
     use std::io::Read;
     let runtime = TestDir::new("request-deadline");
     let daemon = Daemon::start(&runtime.0);
-    let base_fds = daemon_resource_count(daemon.child.id(), "fd");
+    let base_fds = daemon_resource_count(daemon.pid(), "fd");
     let mut idle = UnixStream::connect(&daemon.socket).unwrap();
     idle.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
     let mut drip = UnixStream::connect(&daemon.socket).unwrap();
@@ -971,7 +1185,7 @@ fn idle_and_byte_drip_clients_expire_then_snapshot_service_recovers() {
         b"{\"version\":1,\"op\":\"snapshot\"}\n",
     ))
     .unwrap();
-    wait_for_client_cleanup(daemon.child.id(), base_fds);
+    wait_for_client_cleanup(daemon.pid(), base_fds);
     daemon.stop();
 }
 
@@ -981,7 +1195,7 @@ fn subscriber_cap_reserves_requests_and_disconnected_idle_subscribers_release_sl
     use std::net::Shutdown;
     let runtime = TestDir::new("subscription-budget");
     let daemon = Daemon::start(&runtime.0);
-    let base_fds = daemon_resource_count(daemon.child.id(), "fd");
+    let base_fds = daemon_resource_count(daemon.pid(), "fd");
     let mut subscribers = Vec::new();
     for _ in 0..32 {
         let mut stream = UnixStream::connect(&daemon.socket).unwrap();
@@ -1016,7 +1230,7 @@ fn subscriber_cap_reserves_requests_and_disconnected_idle_subscribers_release_sl
     ))
     .unwrap();
     drop(subscribers);
-    wait_for_client_cleanup(daemon.child.id(), base_fds);
+    wait_for_client_cleanup(daemon.pid(), base_fds);
     let mut stream = UnixStream::connect(&daemon.socket).unwrap();
     stream
         .write_all(b"{\"version\":1,\"op\":\"subscribe\"}\n")
@@ -1053,4 +1267,147 @@ fn unsafe_runtime_parent_is_refused_without_socket_or_lock() {
         .unwrap();
     assert!(!output.status.success());
     assert!(!directory.0.join("agentd.sock").exists());
+}
+
+// Resuming on unwind prevents a failed oracle from leaving a stopped daemon.
+struct ResumeDaemon(OwnedFd);
+impl ResumeDaemon {
+    fn pause(pid: u32) -> Self {
+        let raw = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+        assert!(raw >= 0, "pidfd_open: {}", std::io::Error::last_os_error());
+        let handle = Self(unsafe { OwnedFd::from_raw_fd(raw as i32) });
+        assert_eq!(handle.signal(libc::SIGSTOP), 0);
+        handle
+    }
+    fn signal(&self, signal: i32) -> libc::c_long {
+        unsafe {
+            libc::syscall(
+                libc::SYS_pidfd_send_signal,
+                self.0.as_raw_fd(),
+                signal,
+                std::ptr::null::<libc::siginfo_t>(),
+                0,
+            )
+        }
+    }
+}
+impl Drop for ResumeDaemon {
+    fn drop(&mut self) {
+        let _ = self.signal(libc::SIGCONT);
+    }
+}
+
+#[test]
+fn queued_connections_wait_for_named_admission_after_scheduler_pause() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let runtime = TestDir::new("queued-admission");
+    let daemon = Daemon::start(&runtime.0);
+    let base = daemon_resource_count(daemon.pid(), "fd");
+    wait_for_empty_clients(&daemon, base);
+    let resume = ResumeDaemon::pause(daemon.pid());
+    let stop_deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        let stat = fs::read_to_string(format!("/proc/{}/stat", daemon.pid())).unwrap();
+        if agentd::procfs::parse_stat(&stat, daemon.pid())
+            .unwrap()
+            .state
+            == 'T'
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < stop_deadline,
+            "daemon did not enter stopped state"
+        );
+        thread::sleep(Duration::from_millis(1));
+    }
+    let clients: Vec<_> = (0..32).map(|_| partial_client(&daemon)).collect();
+    daemon.assert_alive();
+    assert_eq!(
+        named_client_count(daemon.pid()),
+        0,
+        "paused daemon cannot admit queued peers"
+    );
+    let resumed = AtomicBool::new(false);
+    thread::scope(|scope| {
+        let resumed = &resumed;
+        scope.spawn(move || {
+            thread::sleep(Duration::from_millis(40));
+            resumed.store(true, Ordering::Release);
+            drop(resume);
+        });
+        wait_for_admission(&daemon, base);
+        assert!(
+            resumed.load(Ordering::Acquire),
+            "admission oracle returned before daemon resumed"
+        );
+        assert!(
+            named_client_count(daemon.pid()) > 0,
+            "no admitted worker witnessed"
+        );
+    });
+    drop(clients);
+    wait_for_empty_clients(&daemon, base);
+    daemon.stop();
+}
+#[test]
+fn daemon_fixture_reaps_after_assertion_and_failed_startup() {
+    let runtime = TestDir::new("daemon-unwind");
+    let daemon = Daemon::start(&runtime.0);
+    let receipt = daemon.cleanup.clone();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _retained = daemon;
+        panic!("deliberate fixture assertion");
+    }));
+    assert!(result.is_err());
+    let receipt = receipt
+        .borrow()
+        .clone()
+        .expect("unwind did not retain child cleanup");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while receipt.state() != CleanupState::Reaped {
+        assert!(
+            Instant::now() < deadline,
+            "fixture child not reaped: {:?}",
+            receipt.state()
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
+    let invalid = TestDir::new("daemon-startup-error");
+    fs::set_permissions(&invalid.0, fs::Permissions::from_mode(0o755)).unwrap();
+    let daemon = Daemon::spawn(&invalid.0);
+    let pid = daemon.pid();
+    let diagnostic = daemon.diagnostics.clone();
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || daemon.await_ready()))
+            .is_err()
+    );
+    assert!(
+        fs::read_to_string(diagnostic)
+            .unwrap()
+            .contains("unsafe XDG_RUNTIME_DIR")
+    );
+    assert!(
+        !PathBuf::from(format!("/proc/{pid}")).exists(),
+        "failed startup was not reaped"
+    );
+}
+
+#[test]
+fn startup_snapshot_drip_cannot_refresh_absolute_deadline() {
+    let (reader, mut writer) = UnixStream::pair().unwrap();
+    let drip = thread::spawn(move || {
+        writer
+            .set_write_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        for _ in 0..50 {
+            if writer.write_all(b" ").is_err() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+    });
+    let result = read_startup_frame(reader, Instant::now() + Duration::from_millis(120));
+    drip.join().unwrap();
+    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::TimedOut);
 }
