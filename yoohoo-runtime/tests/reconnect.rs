@@ -1033,6 +1033,38 @@ mod authority_join {
             grants.lock().unwrap().is_empty(),
             "daemon auto-opened before command"
         );
+        count += 1;
+        let before = cli(&fixture, process, "status", count);
+        let mut invalid =
+            UnixStream::connect(fixture.dir.path().join("control/modal.sock")).unwrap();
+        invalid
+            .set_write_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        invalid
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        invalid
+            .write_all(
+                b"{\"version\":2,\"instance\":null,\"revision\":0,\"operation\":\"status\"}\n",
+            )
+            .unwrap();
+        let mut byte = [0u8; 1];
+        let refusal = invalid.read(&mut byte);
+        assert!(
+            matches!(refusal, Ok(0))
+                || matches!(refusal, Err(ref e) if e.kind() == std::io::ErrorKind::ConnectionReset)
+        );
+        assert!(
+            daemon.child.try_wait().unwrap().is_none(),
+            "unsupported request terminated daemon"
+        );
+        count += 1;
+        let after = cli(&fixture, process, "status", count);
+        assert_eq!(after.phase, Phase::Ready);
+        assert_eq!(after.instance, before.instance);
+        assert_eq!(after.revision, before.revision);
+        assert!(!after.cleanup_confirmed);
+        assert!(grants.lock().unwrap().is_empty());
         fixture.edge(b"urgent>>0x1\n");
         count += 1;
         let opened = cli(&fixture, process, "open", count);

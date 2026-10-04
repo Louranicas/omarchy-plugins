@@ -309,6 +309,11 @@ impl Controller {
             Ok(r) => r,
             Err(_) => return Ok(()),
         };
+        // Unsupported wire versions are an untrusted peer error, not an
+        // internal controller failure. Drop only this connection before command.
+        if request.version != 1 {
+            return Ok(());
+        }
         // Execution has its own bounded Host budgets. Reply budget starts after
         // execution; a lost reply cannot authorize retry of Open or an effect.
         let reply = self.command(request)?;
