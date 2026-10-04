@@ -118,7 +118,20 @@ impl Native {
             identities.insert(address.canonical(), identity);
             clients.push(client);
         }
-        let focused = match active.get("address").and_then(|v| v.as_str()) {
+        // Hyprland represents no active window as an empty object. Missing or
+        // mistyped address in any other response is unknown state, not no focus.
+        let active = active.as_object().ok_or(Error::Invalid)?;
+        let address = if active.is_empty() {
+            None
+        } else {
+            Some(
+                active
+                    .get("address")
+                    .and_then(|v| v.as_str())
+                    .ok_or(Error::Invalid)?,
+            )
+        };
+        let focused = match address {
             None | Some("0x0") => None,
             Some(raw) => {
                 let address = DesktopAddress::parse(raw)

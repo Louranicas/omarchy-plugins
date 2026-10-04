@@ -65,6 +65,46 @@ impl Backend for Simulated {
         Ok(())
     }
 }
+// Own the test workers even when an assertion unwinds. Stop the service before
+// stopping its host, so release still has a live peer during normal teardown.
+#[derive(Default)]
+struct Workers {
+    stop: Arc<AtomicBool>,
+    host: Option<thread::JoinHandle<()>>,
+    service: Option<thread::JoinHandle<()>>,
+}
+impl Workers {
+    fn finish(&mut self) -> bool {
+        let service_ok = self.service.take().is_none_or(|t| t.join().is_ok());
+        self.stop.store(true, Ordering::Release);
+        let host_ok = self.host.take().is_none_or(|t| t.join().is_ok());
+        service_ok && host_ok
+    }
+}
+impl Drop for Workers {
+    fn drop(&mut self) {
+        // Preserve the original assertion panic; never panic twice in Drop.
+        let _ = self.finish();
+    }
+}
+#[test]
+fn assertion_unwind_joins_owned_workers() {
+    let exited = Arc::new(AtomicBool::new(false));
+    let observed = exited.clone();
+    let result = std::panic::catch_unwind(move || {
+        let mut workers = Workers::default();
+        let stop = workers.stop.clone();
+        workers.host = Some(thread::spawn(move || {
+            while !stop.load(Ordering::Acquire) {
+                thread::sleep(Duration::from_millis(1));
+            }
+            observed.store(true, Ordering::Release);
+        }));
+        panic!("intentional fixture assertion");
+    });
+    assert!(result.is_err());
+    assert!(exited.load(Ordering::Acquire));
+}
 fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -109,13 +149,14 @@ fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
     let source = host.begin_source().unwrap();
     host.snapshot(source, 1, vec![NativeTarget::new("test", "a").unwrap()])
         .unwrap();
-    let stop = Arc::new(AtomicBool::new(false));
+    let mut workers = Workers::default();
+    let stop = workers.stop.clone();
     let invalidate = Arc::new(AtomicBool::new(false));
     let invalidated = Arc::new(AtomicBool::new(false));
     let hs = stop.clone();
     let hi = invalidate.clone();
     let ha = invalidated.clone();
-    let host_thread = thread::spawn(move || {
+    workers.host = Some(thread::spawn(move || {
         while !hs.load(Ordering::Acquire) {
             if hi.load(Ordering::Acquire) && !ha.load(Ordering::Acquire) {
                 let s = host.begin_source().unwrap();
@@ -126,7 +167,7 @@ fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
             host.step().unwrap();
             thread::sleep(Duration::from_millis(1));
         }
-    });
+    }));
     let socket = Service::bind(&dir.path().join("data")).unwrap();
     let mut client =
         modal_client::Client::connect(&dir.path().join("arbiter"), identity()).unwrap();
@@ -135,7 +176,7 @@ fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
         modal_client::presenter::Auth::new(lease.fence, lease.presenter.unwrap().namespace())
             .unwrap();
     let mut service = Service::attach(socket, client, native, runtime, origin).unwrap();
-    let service_thread = thread::spawn(move || {
+    workers.service = Some(thread::spawn(move || {
         let end = Instant::now() + Duration::from_secs(2);
         while !service.is_closed() && Instant::now() < end {
             if service.step().is_err() {
@@ -144,7 +185,7 @@ fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
             thread::sleep(Duration::from_millis(1));
         }
         service.close();
-    });
+    }));
     if events_mode.starts_with("wire-") {
         let mut peer =
             modal_client::data::Client::connect(&dir.path().join("data/modal.sock"), identity())
@@ -181,9 +222,7 @@ fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
             assert!(response.is_err());
         }
         drop(peer);
-        service_thread.join().unwrap();
-        stop.store(true, Ordering::Release);
-        host_thread.join().unwrap();
+        assert!(workers.finish());
         assert!(calls.lock().unwrap().is_empty());
         return;
     }
@@ -243,14 +282,14 @@ fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
     }
     if events_mode.starts_with("attack-") {
         stale_event = true;
-        let payload: &[u8] = match events_mode {
-            "attack-closed" => b"closewindow>>0x1\n",
-            "attack-focused" => b"activewindowv2>>0x1\n",
-            "attack-partial" => b"closewindow>>0x",
-            "attack-flood" => b"urgent>>0x1\n".repeat(40).leak(),
+        let payload = match events_mode {
+            "attack-closed" => b"closewindow>>0x1\n".to_vec(),
+            "attack-focused" => b"activewindowv2>>0x1\n".to_vec(),
+            "attack-partial" => b"closewindow>>0x".to_vec(),
+            "attack-flood" => b"urgent>>0x1\n".repeat(40),
             _ => panic!("unknown attack"),
         };
-        events.write_all(payload).unwrap();
+        events.write_all(&payload).unwrap();
     }
     if stale_registry {
         invalidate.store(true, Ordering::Release);
@@ -280,9 +319,7 @@ fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
         assert!(result.unwrap());
     }
     drop(link);
-    service_thread.join().unwrap();
-    stop.store(true, Ordering::Release);
-    host_thread.join().unwrap();
+    assert!(workers.finish());
     assert_eq!(
         calls.lock().unwrap().len(),
         usize::from(!stale_registry && !source_loss && !stale_event && !cleared)

@@ -171,3 +171,76 @@ fn trusted_native_adapter_handles_only_native_urgent_and_focus() {
     assert!(native.poll(&mut runtime, 5).is_err());
     assert!(runtime.view().stale);
 }
+
+#[test]
+fn malformed_active_window_cannot_establish_trusted_snapshot() {
+    use std::os::unix::{fs::PermissionsExt, net::UnixListener};
+    use std::time::Instant;
+    use yoohoo_runtime::native::Native;
+    for active in [
+        "null",
+        "[]",
+        "false",
+        r#"{"address":null}"#,
+        r#"{"address":42}"#,
+        r#"{"title":"missing address"}"#,
+        "{}",
+        r#"{"address":"0x0"}"#,
+        r#"{"address":"0x1"}"#,
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::create_dir_all(dir.path().join("hypr/test")).unwrap();
+        let request = UnixListener::bind(dir.path().join("hypr/test/.socket.sock")).unwrap();
+        request.set_nonblocking(true).unwrap();
+        let event = UnixListener::bind(dir.path().join("hypr/test/.socket2.sock")).unwrap();
+        let endpoint =
+            desktop_io::Endpoint::discover(dir.path(), "test", std::process::id()).unwrap();
+        let mut native = Native::connect(endpoint, [7; 16]).unwrap();
+        let (mut events, _) = event.accept().unwrap();
+        let requests = thread::spawn(move || {
+            for response in [
+                r#"[{"address":"0x1","stableId":"a","title":"One","class":"Terminal","workspace":{"id":1,"name":"1"}}]"#,
+                active,
+            ] {
+                let end = Instant::now() + Duration::from_secs(2);
+                let mut peer = loop {
+                    match request.accept() {
+                        Ok((peer, _)) => break peer,
+                        Err(e)
+                            if e.kind() == std::io::ErrorKind::WouldBlock
+                                && Instant::now() < end =>
+                        {
+                            thread::sleep(Duration::from_millis(1))
+                        }
+                        Err(e) => panic!("fixture accept: {e}"),
+                    }
+                };
+                peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+                peer.set_write_timeout(Some(Duration::from_secs(1)))
+                    .unwrap();
+                let mut buf = [0; 64];
+                assert!(peer.read(&mut buf).unwrap() > 0);
+                peer.write_all(response.as_bytes()).unwrap();
+            }
+        });
+        let mut runtime = Runtime::empty().unwrap();
+        let result = native.synchronize(&mut runtime, 1);
+        requests.join().unwrap();
+        let valid = matches!(
+            active,
+            "{}" | r#"{"address":"0x0"}"# | r#"{"address":"0x1"}"#
+        );
+        assert_eq!(result.is_ok(), valid, "active={active}");
+        assert_eq!(runtime.view().stale, !valid, "active={active}");
+        events.write_all(b"urgent>>0x1\n").unwrap();
+        let urgent = native.poll(&mut runtime, 2);
+        assert_eq!(urgent.is_ok(), valid, "active={active}");
+        assert_eq!(
+            runtime.view().rows.len(),
+            usize::from(valid && active != r#"{"address":"0x1"}"#),
+            "only a valid unfocused snapshot may create attention: {active}"
+        );
+        assert!(runtime.take_activation().is_none());
+    }
+}
