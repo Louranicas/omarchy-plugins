@@ -36,3 +36,11 @@ Upstream notices and licensing scope:
 - [Ask](docs/omarchy-ask-rust/THIRD_PARTY.md)
 - [Yoohoo](docs/omarchy-yoohoo-rust/THIRD_PARTY.md)
 - [Agentd](docs/omarchy-agentd-rust/THIRD_PARTY.md)
+
+## Repeatable quality gates
+
+Run `tools/check.sh --offline` for root workspace formatting, all-target tests and strict Clippy. Add `--native` to include all three separate GTK workspaces; native checks require their documented system libraries. Each command has a ten-minute timeout with process-group termination. Omit `--offline` when locked dependencies first need downloading.
+
+After dependencies are cached, `python3 tools/mutation-check.py` executes three selected semantic controls for Ask runtime identity, Vimarchy reply fencing and Yoohoo revision rollback. Each baseline must run and pass its named test; a mutant must compile and fail that exact test. Compilation errors, missing tests, surviving mutants and timeouts fail the check. Sources are copied from tracked files into a private temporary directory with a separate build target; mutations never touch the working source or normal fixture binaries. Receipts live under `target/mutation-evidence/`. These controls are not a whole-project mutation score.
+
+The GitHub workflow checks the root Rust workspace and selected mutations on Ubuntu with the reviewed Rust toolchain and a read-only token. It does **not** establish GTK/Wayland end-to-end acceptance, provider authentication, ignored real-capture qualification, or production deployment. Those require separate recorded checks. CI follows [GitHub's Rust workflow guidance](https://docs.github.com/en/actions/tutorials/build-and-test-code/rust); checkout is pinned to a reviewed commit and credentials are not persisted.

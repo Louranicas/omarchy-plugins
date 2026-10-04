@@ -1,0 +1,31 @@
+name: Rust workspace checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rust-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install test prerequisites
+        run: sudo apt-get update && sudo apt-get install -y python3 python-is-python3 perl
+      - name: Select verified Rust toolchain
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
+          rustup override set 1.99.0
+      - name: Format, integration tests and strict lint
+        run: tools/check.sh
+      - name: Selected compiled mutation controls
+        run: python3 tools/mutation-check.py
