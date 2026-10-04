@@ -24,7 +24,7 @@ The new [experimental input bridge](../vimarchy-runtime/INPUT-BRIDGE.md) binds f
 
 Development review reproduced and corrected two defects before publication: a pre-expiry event arriving after lease expiry, and a presenter namespace inconsistent with the session context. The package passed 22 tests, formatting and strict Clippy; three compiled semantic mutations were detected.
 
-Separately, four isolated real-Hyprland diagnostic runs demonstrated matched press/release, preheld-release suppression, later cancellation and reentrant invalidation. A compiled mutation defeating preheld protection failed the same oracle. These runs used a synthetic virtual keyboard and diagnostic counters. The compositor diagnostic and Rust receiver are not connected. This is not production input provenance, live desktop activation, or hardware attestation.
+Separately, four isolated real-Hyprland diagnostic runs demonstrated matched press/release, preheld-release suppression, later cancellation and reentrant invalidation. A compiled mutation defeating preheld protection failed the same oracle. These runs used a synthetic virtual keyboard and diagnostic counters. At that initial checkpoint the compositor diagnostic and Rust receiver were not connected; the later isolated join is described below. This is not production input provenance, live desktop activation, or hardware attestation.
 
 ## Agentd
 
@@ -34,7 +34,7 @@ Review tightened the disappearance assertion so an environment where every fixtu
 
 ## Combined verification
 
-The integrated source passed `tools/check.sh --native --offline`: 12 commands, 535 passing test executions, zero failures and two ignored entries, with formatting and strict Clippy clean. Tracked non-Markdown inputs stayed unchanged. Counts overlap across workspaces. Four standard compiled semantic controls also passed their baselines and detected their intended mutations. Independent lane checks are bounded as described above; the pending authenticated vendor fixture is not reclassified.
+The integrated source passed `tools/check.sh --native --offline`: 12 commands, 544 passing test executions, zero failures and two ignored entries, with formatting and strict Clippy clean. Tracked non-Markdown inputs stayed unchanged. Counts overlap across workspaces. Four standard compiled semantic controls also passed their baselines and detected their intended mutations. Independent lane checks are bounded as described above; the pending authenticated vendor fixture is not reclassified.
 
 ## Agentd CI fixture correction
 
@@ -44,10 +44,18 @@ The corrective change is confined to the integration-test harness. It retains ch
 
 The package gate passed 88 tests with one ignored entry. Independent review passed all 18 integration tests. Three compiled semantic controls across owner and independent checks detected missing shutdown cancellation, unconditional admission, and removed worker-cap enforcement. The final combined local gate passed 535 executions with two ignored entries. These controls do not establish a global mutation score. The low-file-descriptor production behavior remains a separate follow-up, and hosted CI requires its own successful run.
 
+## Isolated input join and resource-pressure follow-up
+
+The ABI-pinned compositor fixture now feeds the actual Rust Ingress, Gate and Session through a private bounded socket, ending at counted intents. It does not dispatch Host effects. Eight isolated native scenarios passed; independent review rebuilt the observer and repeated matched, preheld and later-cancel scenarios. The join exposed two timing defects: receipt-time consumption overtook queued source events, and repeatedly sampling the clock offset could reverse equal source timestamps. The correction separates source gesture time from receipt authority time and anchors conversion once on Ready. Arrival expiry, source ordering, future rejection and sticky invalidation remain enforced. Tests cover queued edges, intervening timer/host events, deadline preservation and suspend divergence. Callback-export time is not hardware event time. Synthetic admission, event-loop scheduling and production Host integration remain unqualified. See [fixture scope](../tools/native-input-join/README.md).
+
+Agentd production behavior is unchanged. New [resource-exhaustion tests](../agentd/RESOURCE-EXHAUSTION.md) apply a child-only descriptor limit, witness an admitted subscriber, require terminal failure and socket cleanup, drain buffered data to explicit EOF/reset within fixed budgets, and demonstrate a manual fresh-instance restart. Nonblocking pressure connections cannot wait indefinitely on a full backlog. The package passed 91 tests with one existing ignored entry; independent review passed all 21 integration tests, extra deadline probes and a compiled buffered-data bypass control. Manual restart does not qualify systemd recovery.
+
+The final combined local gate passed 544 overlapping test executions, zero failures and two ignored entries, with 191 tracked non-Markdown inputs stable. The canonical candidate separately passed 587 executions, zero failures and five ignored entries with formatting, strict Clippy and compilation clean. These totals overlap and are not additive. Owner and independent semantic controls are scoped tests, not a global mutation score. Hosted CI remains a separate gate.
+
 ## Remaining integration order
 
 1. Qualify configured Ask sessions with real supported adapters and explicit authentication, cancellation, model and recovery scenarios; finish installed launcher/profile provisioning.
-2. Connect the qualified compositor callback exporter to the experimental receiver in an isolated compositor, including queue backpressure, admission, clock mapping and teardown.
+2. Extend the isolated counted-intent join to qualified production admission, event-loop scheduling and Host authority; complete hardware, device, modifier and lifecycle acceptance.
 3. Complete real-provider, native lifecycle, accessibility and recovery acceptance with current source-bound evidence.
 4. Complete transactional deployment and installed-state readback before production qualification.
 
