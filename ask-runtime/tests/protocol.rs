@@ -418,3 +418,147 @@ fn permission_callback_from_old_runtime_cannot_approve_new_runtime() {
     assert_eq!(new.incoming(instance, 1, json!({}), 5), Err(Error::Stale));
     assert_eq!(new.session().phase(), Phase::Ready);
 }
+
+#[test]
+fn close_discards_unsent_prompt_and_permission_approval() {
+    for support in [false, true] {
+        let mut a = ready(support);
+        a.submit(
+            Id::new("queued-turn").unwrap(),
+            Text::new("must not start after close").unwrap(),
+            3,
+        )
+        .unwrap();
+        a.close(4).unwrap();
+        let out = a.take_outbox();
+        assert!(
+            out.iter().all(|v| v["method"] == "session/close"),
+            "unsent prompt escaped close: {out:?}"
+        );
+        assert_eq!(out.len(), usize::from(support));
+
+        let mut a = ready(support);
+        a.submit(
+            Id::new("sent-turn").unwrap(),
+            Text::new("fixture").unwrap(),
+            3,
+        )
+        .unwrap();
+        a.take_outbox();
+        a.incoming(a.instance(), 1, permission(json!("pending")), 4)
+            .unwrap();
+        let Event::Permission {
+            instance,
+            generation,
+            epoch,
+            request,
+            ..
+        } = a.take_events().remove(0)
+        else {
+            panic!()
+        };
+        a.answer(
+            instance,
+            generation,
+            epoch,
+            &request,
+            Some(&Id::new("actual-option").unwrap()),
+            5,
+        )
+        .unwrap();
+        a.close(6).unwrap();
+        let out = a.take_outbox();
+        assert!(
+            !out.iter()
+                .any(|v| v.pointer("/result/outcome/outcome") == Some(&json!("selected"))),
+            "unsent approval escaped close: {out:?}"
+        );
+    }
+}
+
+#[test]
+fn timeout_discards_unsent_initialize_and_repeated_close_keeps_shutdown() {
+    let mut a = Adapter::new(launch(), 0).unwrap();
+    a.tick(60_000).unwrap();
+    assert!(
+        a.take_outbox().is_empty(),
+        "timed-out initialize must not start"
+    );
+    let mut a = ready(true);
+    a.close(3).unwrap();
+    a.close(4).unwrap();
+    a.tick(5).unwrap();
+    let out = a.take_outbox();
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0]["method"], "session/close");
+}
+
+#[test]
+fn rejected_close_preserves_pending_work() {
+    let mut a = ready(false);
+    a.submit(
+        Id::new("turn").unwrap(),
+        Text::new("keep queued").unwrap(),
+        3,
+    )
+    .unwrap();
+    assert!(a.close(2).is_err());
+    assert_eq!(a.take_outbox()[0]["method"], "session/prompt");
+}
+
+#[test]
+fn real_worker_close_does_not_transmit_queued_prompt() {
+    let directory = tempfile::tempdir().unwrap();
+    let log = directory.path().join("methods");
+    let script = directory.path().join("provider.py");
+    std::fs::write(&script, r#"import json,sys,signal
+signal.alarm(5)
+for line in sys.stdin:
+ m=json.loads(line); method=m.get('method','')
+ with open(sys.argv[1],'a') as log: log.write(method+'\n')
+ if method=='initialize': result={'protocolVersion':1,'agentCapabilities':{'sessionCapabilities':{'close':{}}}}
+ elif method=='session/new': result={'sessionId':'session-actual'}
+ elif method=='session/close':
+  print(json.dumps({'jsonrpc':'2.0','id':m['id'],'result':{}}),flush=True);break
+ else: result={'stopReason':'end_turn'}
+ print(json.dumps({'jsonrpc':'2.0','id':m['id'],'result':result}),flush=True)
+"#).unwrap();
+    let mut launch = launch();
+    launch.command = Command::new(vec![
+        "/usr/bin/python3".into(),
+        script.to_string_lossy().into_owned(),
+        log.to_string_lossy().into_owned(),
+    ])
+    .unwrap();
+    let mut worker = Worker::spawn(launch, vec![], 0).unwrap();
+    let origin = Instant::now();
+    let cancel = AtomicBool::new(false);
+    while worker.adapter().session().phase() != Phase::Ready {
+        assert!(origin.elapsed() < Duration::from_secs(2));
+        worker
+            .pump(origin.elapsed().as_millis() as u64, &cancel)
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let now = origin.elapsed().as_millis() as u64;
+    worker
+        .adapter_mut()
+        .submit(
+            Id::new("queued").unwrap(),
+            Text::new("must not execute").unwrap(),
+            now,
+        )
+        .unwrap();
+    worker.adapter_mut().close(now).unwrap();
+    while worker.reap_receipt().state() != acp_transport::ReapState::Reaped {
+        assert!(origin.elapsed() < Duration::from_secs(3));
+        worker
+            .pump(origin.elapsed().as_millis() as u64, &cancel)
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(
+        std::fs::read_to_string(log).unwrap(),
+        "initialize\nsession/new\nsession/close\n"
+    );
+}

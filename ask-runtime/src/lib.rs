@@ -252,12 +252,35 @@ impl Adapter {
         self.session.set_focused(focused)
     }
     pub fn close(&mut self, now: u64) -> Result<(), Error> {
+        let previous = self.session.phase();
         let e = self.session.close(now)?;
-        self.effects(e)
+        self.lifecycle_effects(previous, e)
     }
     pub fn tick(&mut self, now: u64) -> Result<(), Error> {
+        let previous = self.session.phase();
         let e = self.session.tick(now)?;
-        self.effects(e)
+        self.lifecycle_effects(previous, e)
+    }
+    fn lifecycle_effects(
+        &mut self,
+        previous: ask_core::session::Phase,
+        effects: Vec<Effect>,
+    ) -> Result<(), Error> {
+        use ask_core::session::Phase;
+        if !matches!(previous, Phase::Closing(_) | Phase::Closed)
+            && matches!(self.session.phase(), Phase::Closing(_))
+        {
+            // Closing revokes unsent work. Keep shutdown effects from an earlier
+            // close/tick, and retain correlation only for requests already sent.
+            for value in self.outbox.drain(..) {
+                if value.get("method").is_some()
+                    && let Some(id) = value.get("id").and_then(Value::as_str)
+                {
+                    self.calls.remove(id);
+                }
+            }
+        }
+        self.effects(effects)
     }
     pub fn lost(&mut self, now: u64) {
         self.poisoned = true;
