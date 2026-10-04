@@ -8,6 +8,14 @@ At the preceding checkpoint, four standard compiled semantic mutation controls p
 
 The command covers the root workspace and all three standalone GTK workspaces with locked, offline dependencies, two build jobs and development debug information disabled. No services or live desktop configuration were installed or changed. Hosted portable CI remains a separate partial gate.
 
+## Ask readiness scheduling correction — 2026-10-05
+
+The map callback now starts the existing readiness worker directly after the actual GTK map and display flush. The removed idle callback could starve until the unchanged Host readiness deadline. The worker captures no GTK objects; the one-shot guard, parent monitoring and exact readiness acknowledgement remain unchanged.
+
+On integrated source `3b9f6a8`, the standalone Ask package passed **22 tests**, formatting and all-target strict Clippy with locked offline dependencies. Independent private GTK/Host comparisons built the original and corrected standalone binaries: the original timed out, while the correction received acknowledgement, launched the synthetic adapter and completed actual adapter/presenter reap. Compositor layer/submap proof was simulated. Earlier whole-suite counts above refer to their own checkpoints.
+
+A separately discovered presenter-death case can leave an adapter in its separate process group running. This scheduling fix does not correct that custody defect; managed restart and production process containment remain unqualified.
+
 ## Historical checkpoints
 
 The records below describe earlier source states and retain their original scopes. Later corrections supersede their test-harness prerequisites and totals; they are not cumulative counts.
