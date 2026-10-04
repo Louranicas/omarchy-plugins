@@ -34,7 +34,7 @@ Review tightened the disappearance assertion so an environment where every fixtu
 
 ## Combined verification
 
-The integrated source passed `tools/check.sh --native --offline`: 12 commands, 554 passing test executions, zero failures and two ignored entries, with formatting and strict Clippy clean. Tracked non-Markdown inputs stayed unchanged. Counts overlap across workspaces. Four standard compiled semantic controls also passed their baselines and detected their intended mutations. Independent lane checks are bounded as described above; the pending authenticated vendor fixture is not reclassified.
+The integrated source passed `tools/check.sh --native --offline`: 12 commands, 571 passing test executions, zero failures and two ignored entries, with formatting and strict Clippy clean. Tracked non-Markdown inputs stayed unchanged. Counts overlap across workspaces. Four standard compiled semantic controls also passed their baselines and detected their intended mutations. Independent lane checks are bounded as described above; the pending authenticated vendor fixture is not reclassified.
 
 ## Agentd CI fixture correction
 
@@ -59,6 +59,16 @@ Ask adds [synthetic configured-adapter recovery tests](../ask-runtime/RECOVERY.m
 Yoohoo adds a [nonmodal source supervisor](../yoohoo-runtime/RECONNECT.md) with bounded retry/backoff/jitter, retained endpoint identity, cleared selection/pending activation and fresh observation snapshots. Explicit transfer provides source state only; callers must acquire new modal authority. Independent review reproduced a late idle poll being accepted after its deadline. The correction checks completion and final transfer deadlines; the original delayed-poll reproduction now refuses transfer. The package passed 44 tests; independent backlog and EOF controls passed. No controller/UI reconnection or production modal recovery is claimed.
 
 The final combined gate passed 554 overlapping executions, zero failures and two ignored entries; 195 non-Markdown inputs remained stable. The canonical candidate separately passed 597 executions, zero failures and five ignored entries, with formatting, strict Clippy and compilation clean. Hosted portable CI is checked separately. Prior failures and receipts remain historical evidence; no release gates advance from these partial scenarios.
+
+## Explicit controller and timed habitat exercise
+
+Yoohoo now exposes [serve/status/open/quit](../yoohoo-runtime/CONTROLLER.md), with explicit owner requests, fresh acquisition on open and source hand-back only after confirmed Host cleanup. Uncertain effects or release results remain terminal. Review caught an unsupported protocol version terminating the daemon; a narrow connection-level guard now rejects it without suppressing internal failures. An integrated deadline test also incorrectly required two queries despite valid earlier budget expiry. Its replacement permits early refusal and separately proves deadline nonrenewal with a controlled clock through the production budget path; compiled mutation checks detect renewal.
+
+Ask exposes [typed cleanup observation](../ask-native/CLEANUP-STATUS.md) backed by retained transport receipts. Spawn failures without a receipt remain unverified; custody loss is never classified as reaped. Independent panic and exact-child ECHILD controls passed. Observation alone grants no restart authority.
+
+A 617-second habitat exercise ran actual processes and Unix IPC alongside private GTK/compositor fixtures. One Yoohoo daemon completed 180 close/recovery/fresh-open cycles and confirmed final cleanup. Ask admission/replacement, Agentd pressure/restart, installer single-file publication/rollback and competing publication cases passed. Two actual-daemon regression tests were added; no new production-code defect was reproduced during the exercise. Compositor lifecycle/readback remained simulated where documented, and no live deployment was performed.
+
+Final checks passed 571 combined overlapping test executions with two ignored entries, and 610 candidate executions with five ignored entries, zero failures. Formatting, strict Clippy and builds passed; the 128 tracked Rust files matched the candidate. Four standard compiled mutation controls also passed. Counts overlap and are not additive; real vendor/native acceptance and release gates remain open.
 
 ## Remaining integration order
 
