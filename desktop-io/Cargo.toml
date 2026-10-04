@@ -8,3 +8,6 @@ license = "MIT"
 libc = "=0.2.190"
 serde_json = "=1.0.151"
 serde = "=1.0.229"
+
+[dev-dependencies]
+omarchy-process-runner = { path = "../process-runner" }

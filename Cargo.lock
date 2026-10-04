@@ -104,6 +104,7 @@ name = "desktop-io"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "omarchy-process-runner",
  "serde",
  "serde_json",
 ]
