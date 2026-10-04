@@ -39,3 +39,9 @@ Eight additional Yoohoo regression cases cover stale, closed, focused, partial, 
 The desktop peer integration test requires Python 3 at `/usr/bin/python`, Perl at `/usr/bin/perl` with its core `IO::Socket::UNIX`, Linux procfs/pidfd support and same-user access to executable links. These are test prerequisites, not runtime dependencies.
 
 Publication verification on 2026-10-04: all nine commands passed—root workspace format, all-target tests and strict Clippy, plus tests and all-target strict Clippy for Ask native, Vimarchy UI and Yoohoo UI. **500 passing test executions, 0 failures, 1 ignored** across these scopes; counts may overlap. The single ignored Agentd captured-procfs check remains pending. Commands used offline locked dependencies, two build jobs and development debug information disabled. No deployment qualification is implied.
+
+## Deep hardening integration — 2026-10-04
+
+After independent diff/source review and narrow fixes, `tools/check.sh --native --offline` passed all 12 commands: root and all three UI workspaces formatted, tested and passed all-target strict Clippy. **508 passing test executions, 0 failures, 2 ignored entries**; overlapping scopes are not a unique-test count. The ignored Rust peer-child entry is invoked by parent tests; Agentd captured-procfs acceptance remains pending. Four selected compiled semantic mutation controls passed their positive baselines and failed at the expected assertions.
+
+The initial combined run exposed a real preview-test admission race, preserved in local review evidence; the final run follows a structural quota-isolation fix. The earlier Python/Perl peer fixture was replaced by a bounded Rust child fixture with owned cleanup. See [review and recommendations](docs/HARDENING-2026-10-04.md). Hosted CI is an explicitly partial portable gate; no live acceptance or release gates advance from these results.
