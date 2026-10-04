@@ -1,6 +1,7 @@
 //! Lease-scoped orchestration. This module emits intents, never compositor calls.
 //! Only the trusted host may supply readiness or completed-operation evidence.
 pub mod action_plan;
+pub mod input_bridge;
 pub mod native;
 pub mod policy;
 pub mod presenter;
