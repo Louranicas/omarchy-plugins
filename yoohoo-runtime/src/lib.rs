@@ -1,6 +1,7 @@
 pub mod ipc;
 pub mod native;
 pub mod presenter;
+pub mod reconnect;
 pub mod service;
 use serde::{Deserialize, Serialize};
 use yoohoo_core::{

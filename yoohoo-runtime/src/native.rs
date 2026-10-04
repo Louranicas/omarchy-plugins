@@ -5,6 +5,7 @@ use desktop_io::{
 };
 use std::{
     collections::BTreeMap,
+    sync::Arc,
     time::{Duration, Instant},
 };
 use yoohoo_core::{
@@ -12,7 +13,7 @@ use yoohoo_core::{
     reducer::{Client, Event, Health, Source, SourceHealth},
 };
 pub struct Native {
-    endpoint: Endpoint,
+    endpoint: Arc<Endpoint>,
     events: Events,
     snapshots: Snapshots,
     identities: BTreeMap<String, Identity>,
@@ -20,7 +21,22 @@ pub struct Native {
 }
 impl Native {
     pub fn connect(endpoint: Endpoint, epoch: [u8; 16]) -> Result<Self, desktop_io::Error> {
-        let events = endpoint.events(Duration::from_millis(500))?;
+        Self::connect_before(
+            Arc::new(endpoint),
+            epoch,
+            Instant::now() + Duration::from_millis(500),
+        )
+    }
+    pub(crate) fn connect_before(
+        endpoint: Arc<Endpoint>,
+        epoch: [u8; 16],
+        deadline: Instant,
+    ) -> Result<Self, desktop_io::Error> {
+        let budget = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|d| !d.is_zero())
+            .ok_or(desktop_io::Error::Deadline)?;
+        let events = endpoint.events(budget)?;
         Ok(Self {
             endpoint,
             events,
@@ -30,7 +46,15 @@ impl Native {
         })
     }
     pub fn synchronize(&mut self, runtime: &mut Runtime, now: u64) -> Result<(), Error> {
-        let result = self.sync_inner(runtime, now);
+        self.synchronize_before(runtime, now, Instant::now() + Duration::from_secs(1))
+    }
+    pub(crate) fn synchronize_before(
+        &mut self,
+        runtime: &mut Runtime,
+        now: u64,
+        deadline: Instant,
+    ) -> Result<(), Error> {
+        let result = self.sync_inner(runtime, now, deadline);
         if result.is_err() {
             self.snapshots.invalidate();
             self.identities.clear();
@@ -40,14 +64,25 @@ impl Native {
         }
         result
     }
-    fn sync_inner(&mut self, runtime: &mut Runtime, now: u64) -> Result<(), Error> {
+    fn sync_inner(
+        &mut self,
+        runtime: &mut Runtime,
+        now: u64,
+        deadline: Instant,
+    ) -> Result<(), Error> {
+        let remaining = || {
+            deadline
+                .checked_duration_since(Instant::now())
+                .filter(|d| !d.is_zero())
+                .ok_or(Error::Stale)
+        };
         let rows = self
             .snapshots
-            .collect_clients(&self.endpoint, &mut self.events, Duration::from_millis(500))
+            .collect_clients(&self.endpoint, &mut self.events, remaining()?)
             .map_err(|_| Error::Stale)?;
         let active = self
             .endpoint
-            .query(Query::ActiveWindow, Duration::from_millis(500))
+            .query(Query::ActiveWindow, remaining()?)
             .map_err(|_| Error::Stale)?;
         // Refuse a second-query race instead of mixing focused state with another revision.
         if self
@@ -152,6 +187,7 @@ impl Native {
             .map(|c| c.key.instance().to_owned())
             .or_else(|| identities.values().next().map(|i| i.instance.clone()))
             .unwrap_or_else(|| "empty-native".into());
+        remaining()?;
         let effects = runtime.attention.resnapshot(
             &instance,
             runtime.sequence,
