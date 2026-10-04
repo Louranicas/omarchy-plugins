@@ -17,5 +17,14 @@
       "commit": "ad9ef104d9e43d9e01bd916395f0079fcc56ed40"
     }
   ],
-  "status": "development snapshots; not deployment qualified"
+  "status": "development snapshots; not deployment qualified",
+  "reviewed_hardening_20261004": {
+    "scope": "Desktop peer executable continuity and eight Yoohoo service regression cases",
+    "files": {
+      "desktop-io/src/peer.rs": "045aa1a76f147025af0a1e84cfcc65961a69c0de286b98624120f5cb83790d44",
+      "desktop-io/tests/fake_sockets.rs": "bbf97f233903d2760b0b583ed39686f4c9e3fd08eb4e02a8a5aa4a858c91ccec",
+      "yoohoo-runtime/tests/managed_service.rs": "73a498890acb682228ad8a3ed6d14877688f17fbd1da5944c48aef625b9d837b"
+    },
+    "independent_review": "Four external process/socket controls passed; same-inode exec and between-observation changes remain outside the continuity claim."
+  }
 }

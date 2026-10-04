@@ -16,6 +16,9 @@ pub struct ProcessIdentity {
 pub(crate) struct Peer {
     pub identity: ProcessIdentity,
     fd: OwnedFd,
+    directory: File,
+    // Retain the original executable inode; do not permit recycling after unlink.
+    executable: File,
 }
 impl Peer {
     pub fn pin(pid: u32, expected_start: Option<u64>) -> Result<Self, Error> {
@@ -57,9 +60,16 @@ impl Peer {
         if start_ticks == 0 || expected_start.is_some_and(|expected| expected != start_ticks) {
             return Err(Error::Unauthenticated);
         }
+        // Intentional kernel procfs link under a retained process directory.
+        let executable = File::open(format!("/proc/self/fd/{}/exe", directory.as_raw_fd()))?;
+        if !executable.metadata()?.is_file() {
+            return Err(Error::Unauthenticated);
+        }
         let peer = Self {
             identity: ProcessIdentity { pid, start_ticks },
             fd,
+            directory,
+            executable,
         };
         peer.check()?;
         Ok(peer)
@@ -70,7 +80,7 @@ impl Peer {
             events: libc::POLLIN,
             revents: 0,
         };
-        loop {
+        for _ in 0..4 {
             // SAFETY: one initialized pollfd and zero timeout.
             let result = unsafe { libc::poll(&mut poll, 1, 0) };
             if result < 0 {
@@ -83,8 +93,24 @@ impl Peer {
             if result != 0 {
                 return Err(Error::Unauthenticated);
             }
+            let current = File::open(format!("/proc/self/fd/{}/exe", self.directory.as_raw_fd()))?
+                .metadata()?;
+            let original = self.executable.metadata()?;
+            if !current.is_file()
+                || current.dev() != original.dev()
+                || current.ino() != original.ino()
+                || self.directory.metadata()?.uid() != unsafe { libc::geteuid() }
+            {
+                return Err(Error::Unauthenticated);
+            }
+            // Bracket procfs observations with the same retained process lifetime.
+            // A second interrupted poll refuses rather than extending the loop.
+            if unsafe { libc::poll(&mut poll, 1, 0) } != 0 {
+                return Err(Error::Unauthenticated);
+            }
             return Ok(());
         }
+        Err(Error::Unauthenticated)
     }
 }
 #[cfg(test)]

@@ -145,13 +145,55 @@ fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
         }
         service.close();
     });
+    if events_mode.starts_with("wire-") {
+        let mut peer =
+            modal_client::data::Client::connect(&dir.path().join("data/modal.sock"), identity())
+                .unwrap();
+        let mut request = serde_json::json!({"version":1,"request":"1","auth":auth,"command":{"op":"read","cursor":0,"revision":null}});
+        let initial = peer
+            .exchange(
+                &serde_json::to_vec(&request).unwrap(),
+                Instant::now() + Duration::from_millis(500),
+            )
+            .unwrap();
+        let initial: serde_json::Value = serde_json::from_slice(&initial).unwrap();
+        request["request"] = serde_json::json!("2");
+        match events_mode {
+            "wire-replay" => request["request"] = serde_json::json!("1"),
+            "wire-fence" => request["auth"]["generation"] = serde_json::json!("2"),
+            "wire-cursor" => {
+                request["command"]["cursor"] = serde_json::json!(1);
+            }
+            "wire-revision" => {
+                request["command"]["revision"] = serde_json::json!("999");
+            }
+            _ => panic!("unknown wire attack"),
+        }
+        let response = peer.exchange(
+            &serde_json::to_vec(&request).unwrap(),
+            Instant::now() + Duration::from_millis(500),
+        );
+        if matches!(events_mode, "wire-cursor" | "wire-revision") {
+            let response: serde_json::Value = serde_json::from_slice(&response.unwrap()).unwrap();
+            assert_eq!(response["result"]["status"], "changed");
+            assert_eq!(response["revision"], initial["revision"]);
+        } else {
+            assert!(response.is_err());
+        }
+        drop(peer);
+        service_thread.join().unwrap();
+        stop.store(true, Ordering::Release);
+        host_thread.join().unwrap();
+        assert!(calls.lock().unwrap().is_empty());
+        return;
+    }
     let mut link = Link::connect(&dir.path().join("data/modal.sock"), identity(), auth).unwrap();
     let mut model = link.model().unwrap();
     assert_eq!(model.view.rows.len(), 1);
     assert!(calls.lock().unwrap().is_empty(), "opening must not focus");
     let mut stale_event = false;
     let mut cleared = false;
-    if !events_mode.is_empty() {
+    if !events_mode.is_empty() && !events_mode.starts_with("attack-") {
         let original = model.view.clone();
         events.write_all(b"notification>>untrusted\n").unwrap();
         model = link.model().unwrap();
@@ -198,6 +240,17 @@ fn scenario(stale_registry: bool, source_loss: bool, events_mode: &str) {
                 cleared = true;
             }
         }
+    }
+    if events_mode.starts_with("attack-") {
+        stale_event = true;
+        let payload: &[u8] = match events_mode {
+            "attack-closed" => b"closewindow>>0x1\n",
+            "attack-focused" => b"activewindowv2>>0x1\n",
+            "attack-partial" => b"closewindow>>0x",
+            "attack-flood" => b"urgent>>0x1\n".repeat(40).leak(),
+            _ => panic!("unknown attack"),
+        };
+        events.write_all(payload).unwrap();
     }
     if stale_registry {
         invalidate.store(true, Ordering::Release);
@@ -263,4 +316,37 @@ fn close_clears_row_without_closing_managed_list() {
 #[test]
 fn native_update_rejects_preupdate_activation_without_focus() {
     scenario(false, false, "stale");
+}
+
+#[test]
+fn attack_closed_before_activation() {
+    scenario(false, false, "attack-closed");
+}
+#[test]
+fn attack_focused_before_activation() {
+    scenario(false, false, "attack-focused");
+}
+#[test]
+fn attack_partial_before_activation() {
+    scenario(false, false, "attack-partial");
+}
+#[test]
+fn attack_flood_before_activation() {
+    scenario(false, false, "attack-flood");
+}
+#[test]
+fn wire_replay_refused() {
+    scenario(false, false, "wire-replay");
+}
+#[test]
+fn wire_fence_refused() {
+    scenario(false, false, "wire-fence");
+}
+#[test]
+fn wire_cursor_refused() {
+    scenario(false, false, "wire-cursor");
+}
+#[test]
+fn wire_revision_refused() {
+    scenario(false, false, "wire-revision");
 }

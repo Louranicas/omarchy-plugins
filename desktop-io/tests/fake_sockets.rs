@@ -586,3 +586,32 @@ fn workspace_move_closed_numeric_wire_and_exact_ack() {
         Err(Error::Invalid)
     ));
 }
+
+#[test]
+fn same_pid_different_executable_cannot_reuse_discovered_compositor_identity() {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    let runtime = Runtime::new();
+    let perl = "use IO::Socket::UNIX; $|=1; unlink $ARGV[0]; my $s=IO::Socket::UNIX->new(Type=>SOCK_STREAM,Local=>$ARGV[0],Listen=>1) or die $!; print \"ready\\n\"; my $c=$s->accept(); my $q; sysread($c,$q,64); print $c \"[]\"; close $c; sleep 1;";
+    let python = "import os,sys\nprint('pinned',flush=True)\nsys.stdin.readline()\nos.execv('/usr/bin/perl',['perl','-e',sys.argv[1],sys.argv[2]])";
+    let mut child = Command::new("/usr/bin/python")
+        .args(["-u", "-c", python, perl])
+        .arg(runtime.path.join("hypr/test_1/.socket.sock"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut out = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    out.read_line(&mut line).unwrap();
+    assert_eq!(line, "pinned\n");
+    let endpoint = Endpoint::discover(&runtime.path, "test_1", child.id()).unwrap();
+    child.stdin.take().unwrap().write_all(b"go\n").unwrap();
+    line.clear();
+    out.read_line(&mut line).unwrap();
+    assert_eq!(line, "ready\n");
+    let result = endpoint.query(Query::Clients, Duration::from_millis(300));
+    let _ = child.kill();
+    child.wait().unwrap();
+    assert!(matches!(result, Err(Error::Unauthenticated)));
+}
