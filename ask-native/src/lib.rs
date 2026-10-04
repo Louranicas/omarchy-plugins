@@ -1,5 +1,6 @@
 //! Bounded UI command/snapshot contracts; callbacks carry rendered permission identity.
 pub mod backend;
+pub mod backend_status;
 pub mod fixture;
 use ask_core::permission::{Kind, Offered};
 use ask_core::{Id, RequestId, Text};

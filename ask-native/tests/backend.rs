@@ -237,3 +237,74 @@ fn same_search_allows_multiple_distinct_previews() {
     assert_eq!(texts, ["A", "B"]);
     assert!(h.finish());
 }
+
+#[test]
+fn typed_cancel_is_not_terminal_and_observer_survives_finish() {
+    use ask_native::backend_status::Cleanup;
+    let (handle, _) = pending();
+    let observer = handle.lifecycle.clone();
+    assert_eq!(
+        observer.snapshot().cleanup,
+        Cleanup::Child(acp_transport::ReapState::Running)
+    );
+    handle
+        .commands
+        .try_send(Command::Cancel { sequence: 2 })
+        .unwrap();
+    let view = wait(&handle, |view| {
+        view.ready && !view.busy && view.permissions.is_empty()
+    });
+    assert!(!view.lifecycle.terminal);
+    assert!(!view.lifecycle.stop_requested);
+    assert!(!view.lifecycle.thread_finished);
+    assert!(handle.finish());
+    let state = observer.snapshot();
+    assert!(state.terminal && state.stop_requested && state.thread_finished);
+    assert_eq!(
+        state.cleanup,
+        Cleanup::Child(acp_transport::ReapState::Reaped)
+    );
+}
+
+#[test]
+fn fatal_status_requires_actual_reap_not_terminal_text() {
+    use ask_native::backend_status::Cleanup;
+    let mut spec = launch();
+    spec.command = LaunchCommand::new(vec![
+        "/usr/bin/python3".into(),
+        "-c".into(),
+        "import sys; sys.stdin.readline(); print('{',flush=True); sys.stdin.read()".into(),
+    ])
+    .unwrap();
+    let handle = Handle::start(spec);
+    let observer = handle.lifecycle.clone();
+    wait(&handle, |view| view.lifecycle.terminal);
+    let end = Instant::now() + Duration::from_secs(3);
+    while observer.snapshot().cleanup != Cleanup::Child(acp_transport::ReapState::Reaped) {
+        assert!(
+            Instant::now() < end,
+            "actual cleanup receipt never completed"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(
+        !observer.snapshot().thread_finished,
+        "fatal adapter alone must not imply presenter/backend exit"
+    );
+    assert!(handle.finish());
+    assert!(observer.snapshot().thread_finished);
+}
+
+#[test]
+fn failed_spawn_without_receipt_is_explicitly_unverified() {
+    use ask_native::backend_status::Cleanup;
+    let mut spec = launch();
+    spec.command = LaunchCommand::new(vec!["/no-such-ask-provider".into()]).unwrap();
+    let handle = Handle::start(spec);
+    let observer = handle.lifecycle.clone();
+    let view = wait(&handle, |view| view.lifecycle.terminal);
+    assert_eq!(view.lifecycle.cleanup, Cleanup::Unverified);
+    assert!(!handle.finish());
+    assert!(observer.snapshot().thread_finished);
+    assert_eq!(observer.snapshot().cleanup, Cleanup::Unverified);
+}

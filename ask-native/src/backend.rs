@@ -1,3 +1,4 @@
+use crate::backend_status::{Observer, Status};
 use crate::{Latest, Permission};
 use ask_core::launch::FrozenLaunch;
 use ask_core::session::{Phase, Role};
@@ -36,6 +37,7 @@ pub struct Ack {
 }
 #[derive(Clone, Debug)]
 pub struct View {
+    pub lifecycle: Status,
     pub revision: u64,
     pub ready: bool,
     pub busy: bool,
@@ -47,6 +49,7 @@ pub struct View {
     pub attention: bool,
 }
 pub struct Handle {
+    pub lifecycle: Observer,
     pub commands: SyncSender<Command>,
     pub views: Latest<View>,
     stop: Arc<AtomicBool>,
@@ -97,8 +100,12 @@ impl Handle {
         let output = views.clone();
         let stop = Arc::new(AtomicBool::new(false));
         let ending = stop.clone();
-        let join = thread::spawn(move || run(launch, pending, rx, output, ending, parent));
+        let lifecycle = Observer::new(stop.clone());
+        let observation = lifecycle.clone();
+        let join =
+            thread::spawn(move || run(launch, pending, rx, output, ending, parent, observation));
         Self {
+            lifecycle,
             commands: tx,
             views,
             stop,
@@ -142,7 +149,10 @@ fn run(
     views: Latest<View>,
     stop: Arc<AtomicBool>,
     parent: Option<modal_runtime::readiness::ParentWatch>,
+    observation: Observer,
 ) -> bool {
+    // Declared before Worker: completion becomes visible only after Worker drop.
+    let _completion = observation.guard();
     let parent_alive = || parent.as_ref().is_none_or(|watch| watch.check().is_ok());
     let admission_deadline = Instant::now() + Duration::from_secs(5);
     while !environment.admission.load(Ordering::Acquire) {
@@ -159,7 +169,9 @@ fn run(
         .as_ref()
         .is_some_and(|checked| checked.recheck().is_err())
     {
+        observation.update(None, true);
         views.publish(View {
+            lifecycle: observation.snapshot(),
             revision: 1,
             ready: false,
             busy: false,
@@ -177,10 +189,13 @@ fn run(
     }
     let origin = Instant::now();
     let now = || origin.elapsed().as_millis() as u64;
+    observation.attempted();
     let mut worker = match Worker::spawn(launch, environment.values, 0) {
         Ok(w) => w,
         Err(e) => {
+            observation.update(None, true);
             views.publish(View {
+                lifecycle: observation.snapshot(),
                 revision: 1,
                 ready: false,
                 busy: false,
@@ -194,12 +209,14 @@ fn run(
             return false;
         }
     };
+    observation.adopted(worker.reap_receipt());
     let cancel = AtomicBool::new(false);
     let mut permissions = Vec::<Permission>::new();
     let mut revision = 0u64;
     let mut ack = None;
     let mut status = "Starting provider…".to_owned();
     let mut dirty = true;
+    let mut last_lifecycle = None;
     let mut terminal = false;
     let mut attention = false;
     'running: while !stop.load(Ordering::Acquire) {
@@ -323,6 +340,9 @@ fn run(
             permissions.clear();
             dirty = true
         }
+        observation.update(Some(worker.adapter().session().phase()), terminal);
+        let lifecycle = observation.snapshot();
+        dirty |= last_lifecycle != Some(lifecycle);
         if dirty {
             let session = worker.adapter().session();
             let busy = session.active_turn().is_some();
@@ -339,6 +359,7 @@ fn run(
                 None => break,
             };
             views.publish(View {
+                lifecycle: observation.snapshot(),
                 revision,
                 ready: session.phase() == Phase::Ready && !terminal,
                 busy,
@@ -353,6 +374,7 @@ fn run(
                 ack: ack.clone(),
                 attention,
             });
+            last_lifecycle = Some(lifecycle);
             dirty = false;
         }
         thread::sleep(Duration::from_millis(8));
@@ -365,9 +387,11 @@ fn run(
     } else {
         let _ = worker.adapter_mut().close(now());
     }
+    observation.update(Some(worker.adapter().session().phase()), true);
     let until = Instant::now() + Duration::from_secs(2);
     while Instant::now() < until {
         let _ = worker.pump(now(), &cancel);
+        observation.update(Some(worker.adapter().session().phase()), true);
         if worker.reap_receipt().state() == acp_transport::ReapState::Reaped {
             return true;
         }
