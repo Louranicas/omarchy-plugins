@@ -1,4 +1,4 @@
-name: Rust workspace checks
+name: Portable Rust checks
 on:
   push:
   pull_request:
@@ -26,6 +26,6 @@ jobs:
           rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
           rustup override set 1.99.0
       - name: Format, integration tests and strict lint
-        run: tools/check.sh
+        run: tools/check.sh --portable
       - name: Selected compiled mutation controls
         run: python3 tools/mutation-check.py
